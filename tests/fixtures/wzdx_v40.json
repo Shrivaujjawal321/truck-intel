@@ -1,0 +1,77 @@
+{
+  "feed_info": {},
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "CARSx-105193",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "data_source_id": "CARS",
+          "event_type": "work-zone",
+          "road_names": ["US 169"],
+          "direction": "northbound",
+          "description": "Exit Ramp Closed",
+          "update_date": "2026-06-15T16:04:59.977Z"
+        },
+        "beginning_milepost": 128.71,
+        "ending_milepost": 128.71,
+        "beginning_accuracy": "estimated",
+        "ending_accuracy": "estimated",
+        "start_date": "2026-06-15T16:03:56.208Z",
+        "end_date": "2026-09-25T22:00:00Z",
+        "start_date_accuracy": "estimated",
+        "end_date_accuracy": "estimated",
+        "vehicle_impact": "unknown",
+        "location_method": "other"
+      },
+      "geometry": {
+        "type": "MultiPoint",
+        "coordinates": [[-93.400414, 44.952156]]
+      },
+      "bbox": [44.952156, -93.400414, 44.952156, -93.400414]
+    },
+    {
+      "id": "CARSx-200001",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "data_source_id": "CARS",
+          "event_type": "work-zone",
+          "road_names": ["MN 23"],
+          "direction": "eastbound",
+          "description": "Zone-described closure, agency sent no geometry",
+          "update_date": "2026-07-01T00:00:00Z"
+        },
+        "start_date": "2026-07-01T00:00:00Z",
+        "end_date": "2026-08-01T00:00:00Z",
+        "vehicle_impact": "some-lanes-closed"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "road_event_id": "CARS5-300002",
+        "core_details": {
+          "data_source_id": "CARS",
+          "event_type": "work-zone",
+          "road_name": "US 50",
+          "direction": "westbound",
+          "description": "Legacy singular road_name spelling",
+          "update_date": "2026-07-06T12:04:21Z"
+        },
+        "start_date": "2026-07-06T05:00:00Z",
+        "end_date": "2026-07-30T09:00:00Z",
+        "start_date_accuracy": "verified",
+        "end_date_accuracy": "estimated",
+        "vehicle_impact": "some-lanes-closed",
+        "types_of_work": [{"type_name": "below-road-work"}]
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-95.411441, 37.787087], [-95.411437, 37.788715]]
+      }
+    }
+  ]
+}

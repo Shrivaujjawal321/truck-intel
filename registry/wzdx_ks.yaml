@@ -1,0 +1,24 @@
+# WZDx work zones — Kansas DOT (CARS program), verified live 2026-07-22
+# (research/live-ops.md §1.1 + §2.2: "ks.carsprogram.org/carsapi_v1/api/wzdx
+# (KS, open)" — license-verified open, auth "None"; federal WZDx Feed Registry
+# row: active=true, needAPIKey empty, version 4).
+# License evidence: KS state open data via the USDOT WZDx registry (registry
+# itself US-government public domain); endpoint keyless — re-fetched today:
+# HTTP 200, WZDx v4.0 (empty feed_info — parser handles it), 466 events.
+id: wzdx_ks
+name: WZDx work zones — Kansas DOT (CARS)
+owner: Kansas DOT
+url: https://ks.carsprogram.org/carsapi_v1/api/wzdx
+kind: live_json
+load_pattern: event_lifecycle
+parser: wzdx
+schedule_minutes: 15
+slo_hours: 24                  # work zones move slower than weather alerts
+license: KS state open data (USDOT WZDx Feed Registry, open/no-key)
+attribution: "Kansas DOT (WZDx / CARS program)"
+gates:
+  min_rows: 0                  # zero active work zones is a legitimate state
+  max_row_delta_pct: null      # row-delta gate is not meaningful for event feeds
+  required_fields: [event_id, kind]   # gate 1 (pipeline.md required_columns) - lifecycle
+                               # tracking is keyed on event_id
+auth: null

@@ -40,7 +40,23 @@ def parse(raw: bytes) -> Iterator[dict]:
                                 area description, full CAP properties
     """
     fc = json.loads(raw)
-    for feature in fc.get("features", []):
+    # Envelope validation — same rule as parsers/wzdx.py: an event_lifecycle
+    # publish of [] soft-closes every active alert, so a 200-with-error-JSON
+    # body (api.weather.gov problem+json, proxy/maintenance envelopes) must
+    # raise, never read as "zero active alerts". A FeatureCollection with an
+    # empty features array IS a legitimate zero-alert state.
+    if not isinstance(fc, dict) or "features" not in fc:
+        raise ValueError(
+            "not an NWS alerts FeatureCollection (no 'features' key) — "
+            "refusing to treat an unrecognized envelope as an empty feed"
+        )
+    features = fc["features"]
+    if not isinstance(features, list):
+        raise ValueError(
+            f"NWS 'features' is {type(features).__name__}, not a list — "
+            "upstream drift, refusing to publish"
+        )
+    for feature in features:
         props = dict(feature.get("properties") or {})
         yield {
             "event_id": props.get("id") or feature.get("id"),

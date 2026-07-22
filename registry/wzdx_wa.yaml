@@ -1,0 +1,24 @@
+# WZDx work zones — Washington State DOT, verified live 2026-07-22
+# (research/live-ops.md §1.1: "wzdx.wsdot.wa.gov/api/v4/WorkZoneFeed (WA,
+# open)" — named as a verified open example feed; federal WZDx Feed Registry
+# row: active=true, needAPIKey empty, version 4.2).
+# License evidence: WA state open data via the USDOT WZDx registry (registry
+# itself US-government public domain); endpoint keyless — re-fetched today:
+# HTTP 200, WZDx v4.2, publisher "Washington State DOT IT", 589 events.
+id: wzdx_wa
+name: WZDx work zones — Washington State DOT
+owner: Washington State DOT
+url: https://wzdx.wsdot.wa.gov/api/v4/WorkZoneFeed
+kind: live_json
+load_pattern: event_lifecycle
+parser: wzdx
+schedule_minutes: 15
+slo_hours: 24                  # work zones move slower than weather alerts
+license: WA state open data (USDOT WZDx Feed Registry, open/no-key)
+attribution: "Washington State DOT (WZDx)"
+gates:
+  min_rows: 0                  # zero active work zones is a legitimate state
+  max_row_delta_pct: null      # row-delta gate is not meaningful for event feeds
+  required_fields: [event_id, kind]   # gate 1 (pipeline.md required_columns) - lifecycle
+                               # tracking is keyed on event_id
+auth: null

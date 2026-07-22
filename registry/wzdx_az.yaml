@@ -1,0 +1,23 @@
+# WZDx work zones — Arizona DOT (AZ511), verified live 2026-07-22
+# (research/live-ops.md §1.1 + §2.1: AZ has an "open WZDx at
+# https://az511.com/api/wzdx" — named alongside the license-verified open
+# example feeds; AZ 511 data is state open data with free developer terms).
+# License evidence: AZ state open data (AZDOT 511 program); endpoint keyless —
+# re-fetched today: HTTP 200, WZDx v4.1, publisher "AZDOT", 3439 events.
+id: wzdx_az
+name: WZDx work zones — Arizona DOT (AZ511)
+owner: Arizona DOT
+url: https://az511.com/api/wzdx
+kind: live_json
+load_pattern: event_lifecycle
+parser: wzdx
+schedule_minutes: 15
+slo_hours: 24                  # work zones move slower than weather alerts
+license: AZ state open data (AZDOT 511 / USDOT WZDx ecosystem, open/no-key)
+attribution: "Arizona DOT (AZ511 WZDx)"
+gates:
+  min_rows: 0                  # zero active work zones is a legitimate state
+  max_row_delta_pct: null      # row-delta gate is not meaningful for event feeds
+  required_fields: [event_id, kind]   # gate 1 (pipeline.md required_columns) - lifecycle
+                               # tracking is keyed on event_id
+auth: null

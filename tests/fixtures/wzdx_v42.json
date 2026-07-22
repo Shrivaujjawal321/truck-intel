@@ -1,0 +1,92 @@
+{
+  "road_event_feed_info": null,
+  "feed_info": {
+    "publisher": "Test State DOT",
+    "version": "4.2",
+    "update_date": "2026-07-22T07:00:00Z",
+    "update_frequency": 60,
+    "data_sources": [
+      {"data_source_id": "TSDOT-CIA", "organization_name": "Test State DOT"}
+    ]
+  },
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "1001-E",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "data_source_id": "TSDOT-CIA",
+          "event_type": "work-zone",
+          "road_names": ["I-90"],
+          "direction": "eastbound",
+          "description": "Bridge deck repair, right lane closed",
+          "creation_date": "2026-06-01T09:00:00Z",
+          "update_date": "2026-07-20T10:00:00Z"
+        },
+        "start_date": "2026-07-01T00:00:00Z",
+        "end_date": "2026-09-30T00:00:00Z",
+        "start_date_accuracy": "verified",
+        "is_start_date_verified": true,
+        "end_date_accuracy": "estimated",
+        "is_end_date_verified": false,
+        "beginning_accuracy": "estimated",
+        "is_start_position_verified": false,
+        "event_status": "active",
+        "vehicle_impact": "some-lanes-closed",
+        "location_method": "channel-device-method",
+        "reduced_speed_limit_kph": 80.0,
+        "restrictions": [
+          {"type": "reduced-width", "value": 10.0, "unit": "feet"}
+        ],
+        "worker_presence": {"are_workers_present": true},
+        "custom_agency_field": "passes through untouched"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-122.5, 47.2], [-122.4, 47.25], [-122.3, 47.3]]
+      }
+    },
+    {
+      "id": "2002-AREA",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "data_source_id": "TSDOT-CIA",
+          "event_type": "work-zone",
+          "road_names": ["SR 520"],
+          "direction": "undefined",
+          "description": "Full closure area",
+          "creation_date": "2026-07-10T08:30:00Z"
+        },
+        "start_date": "2026-07-15T00:00:00Z",
+        "end_date": "2026-07-25T00:00:00Z",
+        "vehicle_impact": "all-lanes-closed"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[-122.2, 47.6], [-122.1, 47.6], [-122.1, 47.7], [-122.2, 47.7], [-122.2, 47.6]]
+        ]
+      }
+    },
+    {
+      "id": "3003-P",
+      "type": "Feature",
+      "properties": {
+        "core_details": {
+          "data_source_id": "TSDOT-CIA",
+          "event_type": "work-zone",
+          "road_names": ["US 2"],
+          "direction": "westbound",
+          "description": "Spot maintenance",
+          "update_date": "2026-07-21T12:00:00Z"
+        },
+        "start_date": "2026-07-21T06:00:00Z",
+        "end_date": "2026-07-23T18:00:00Z",
+        "vehicle_impact": "all-lanes-open"
+      },
+      "geometry": {"type": "Point", "coordinates": [-121.9, 47.85]}
+    }
+  ]
+}

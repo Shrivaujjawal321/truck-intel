@@ -1,0 +1,9 @@
+state,issuingOrganization,feedName,url,format,active,DatafeedUpdateFrequency,version,sdate,edate,needAPIKey,apiKeyURL,StateCoordinate
+washington,Washington State DOT,wsdot,https://wzdx.example.gov/api/v4/WorkZoneFeed,geojson,true,1m,4.2,02/05/2024 12:00:00 AM,,,,POINT (-122.89165 47.03954)
+oklahoma,Oklahoma DOT,odot,https://oktraffic.example.org/api/Geojsons/workzones?&access_token=NOTAREALTOKEN,geojson,true,1m,4,04/30/2022 12:00:00 AM,,,,POINT (-97.52107 35.47203)
+illinois,Illinois Tollway,iltollway,https://tims2go.example.us/wzdx/v4.2?api_key=[Your-API-Key-Here],geojson,true,60m,4.2,01/27/2025 12:00:00 AM,,true,,POINT (-89.64361 39.8013)
+michigan,Michigan Department of Transportation,michigandot,,geojson,false,,,04/21/2023 12:00:00 AM,06/30/2025 12:30:00 AM,,,POINT (-84.55226 42.73194)
+massachusetts,Massachusetts DOT,massdot__cwz,https://api.example-swzm.com/api/v1/cwz/work-zone-feed,geojson,true,1m,CWZ 1.0,03/30/2026 12:00:00 AM,,,,POINT (-71.05675 42.35866)
+n/a,CivicLink,CivicLink_CrewCast,https://example.replit.app/api/wzdx/work-zones.geojson,geojson,true,5m,4.2,11/05/2025 12:00:00 AM,,,,
+texas,Texas DOT,txdot_v4_2,https://api.example-drivetexas.org/api/conditions.wzdx.geojson,geojson,true,5m,4.2,01/17/2024 12:00:00 AM,,,,POINT (-97.743 30.26759)
+texas,City of Austin,austin,https://data.example-austintexas.gov/download/d9mm-cjw9,geojson,true,60m,4.2,11/07/2024 12:00:00 AM,,,,POINT (-97.743 30.26759)
