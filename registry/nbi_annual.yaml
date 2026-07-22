@@ -1,0 +1,20 @@
+# FHWA National Bridge Inventory — annual bulk file (research/bridges.md, verified 2026-07-22).
+# url is the verified per-year download page listing the ZIPs (delimited + fixed-width);
+# design/pipeline.md records the 2025 delimited national ZIP as
+# https://www.fhwa.dot.gov/bridge/nbi/2025/delimited/NBI2025.zip
+# Units warning (NBI Coding Guide): clearances in METERS, ratings in METRIC TONS —
+# the parser converts before publishing (min_vert_clearance_in is inches).
+id: nbi_annual
+name: FHWA National Bridge Inventory (annual bulk ZIP)
+owner: Federal Highway Administration (FHWA), US DOT
+url: https://www.fhwa.dot.gov/bridge/nbi/ascii2025.cfm
+kind: bulk_http
+load_pattern: snapshot_swap
+schedule_minutes: 10080        # weekly probe for a new annual vintage (cheap conditional request)
+license: US public domain
+attribution: "Federal Highway Administration (FHWA), US DOT"
+slo_hours: 9490                # 13 months — annual dataset
+gates:
+  min_rows: 550000             # 2025 file = 624,193 bridges; a truncated file must never publish
+  max_row_delta_pct: 10
+auth: null

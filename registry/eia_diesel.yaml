@@ -1,0 +1,23 @@
+# EIA weekly on-highway diesel prices — Open Data API v2, route petroleum/pri/gnd
+# (research/fuel.md, checked 2026-07-22: dataset + free-key access CONFIRMED; the
+# exact route string was not re-executed in the adversarial pass — verify on the
+# first live run).
+# HONESTY: regional weekly averages (US, PADDs, sub-PADDs, CA only for diesel) —
+# NEVER station-level pump prices; the API labels them "regional_weekly_estimate".
+# Key handling: EIA_API_KEY absent from .env -> the connector writes one
+# ops.source_runs row with status='skipped_no_key' and a clear message. No crash.
+id: eia_diesel
+name: EIA weekly on-highway diesel prices (regional averages)
+owner: U.S. Energy Information Administration (EIA)
+url: https://api.eia.gov/v2/petroleum/pri/gnd/data/
+kind: api_keyed
+load_pattern: upsert
+schedule_minutes: 1440         # daily check; series updates weekly (Mondays)
+license: US public domain (attribution requested)
+attribution: "U.S. Energy Information Administration (EIA)"
+slo_hours: 216                 # 9 days
+gates:
+  min_rows: 1
+  max_row_delta_pct: null      # upsert time series; delta gate not meaningful
+auth:
+  env: EIA_API_KEY

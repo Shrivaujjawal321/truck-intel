@@ -1,0 +1,21 @@
+# BTS/FHWA NTAD "Truck Stop Parking" — ArcGIS FeatureServer root, verified live
+# 2026-07-22 (research/parking-rest-weigh.md; live query returned count=1915).
+# Query pattern: {url}/0/query?where=1=1&outFields=*&f=geojson with resultOffset
+# paging. Read maxRecordCount from the layer metadata — never hardcode page size
+# (plan §10 Phase-1 risk).
+# HONESTY: observed_at for these rows is the ~2019 Jason's Law survey era,
+# never the download date.
+id: ntad_parking
+name: NTAD Truck Stop Parking (BTS)
+owner: Bureau of Transportation Statistics (BTS), US DOT
+url: https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_Truck_Stop_Parking/FeatureServer
+kind: arcgis
+load_pattern: snapshot_swap
+schedule_minutes: 1440         # daily check; change-detection skips unchanged data
+license: US public domain
+attribution: "Bureau of Transportation Statistics (BTS), US DOT"
+slo_hours: 192                 # 8 days
+gates:
+  min_rows: 1500               # dataset is 1,915 points
+  max_row_delta_pct: 10
+auth: null

@@ -1,0 +1,14 @@
+# virtualenvs
+.venv/
+venv/
+
+# secrets
+.env
+
+# immutable raw downloads (content-addressed, replayable, never committed)
+data/raw/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/

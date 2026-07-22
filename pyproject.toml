@@ -1,0 +1,27 @@
+[project]
+name = "truckintel"
+version = "0.1.0"
+description = "US truck intelligence platform — MVP data spine (4 sources, 5 endpoints, honest labeling)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "requests>=2.32",
+    "jinja2>=3.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["truckintel", "api"]

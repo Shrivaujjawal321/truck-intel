@@ -1,0 +1,18 @@
+# NWS active weather alerts — api.weather.gov, verified live 2026-07-22
+# (research/live-ops.md: GET /alerts/active?area=CA returned a GeoJSON
+# FeatureCollection). No key; NWS REQUIRES a descriptive User-Agent with a
+# contact email — polite_get() provides it from CONTACT_EMAIL.
+id: nws_alerts
+name: NWS active weather alerts
+owner: National Weather Service (NOAA)
+url: https://api.weather.gov/alerts/active
+kind: live_json
+load_pattern: event_lifecycle
+schedule_minutes: 10           # freshness SLO is 1 h; a 10-min poll stays well inside it
+license: US public domain
+attribution: "National Weather Service (NOAA)"
+slo_hours: 1
+gates:
+  min_rows: 0                  # a calm day can legitimately return very few alerts
+  max_row_delta_pct: null      # row-delta gate is not meaningful for event feeds
+auth: null
