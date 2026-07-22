@@ -1,0 +1,60 @@
+{
+  "type": "FeatureCollection",
+  "properties": {"exceededTransferLimit": false},
+  "features": [
+    {
+      "type": "Feature",
+      "id": 1,
+      "geometry": {"type": "Point", "coordinates": [-88.3930319998784, 30.4772380003315]},
+      "properties": {
+        "OBJECTID": 1,
+        "state_number": "01",
+        "nhs_rest_stop": "Grand Bay Welcome Center",
+        "highway_route": "I-10 EB",
+        "mile_post": "0.485",
+        "municipality": "Grand Bay",
+        "county": "Mobile",
+        "state": "AL",
+        "latitude": 30.477238,
+        "longitude": -88.393032,
+        "number_of_spots": 90
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 2,
+      "geometry": {"type": "Point", "coordinates": [-122.762861, 45.573049]},
+      "properties": {
+        "OBJECTID": 2,
+        "state_number": "41",
+        "nhs_rest_stop": "Jubitz Travel Center",
+        "highway_route": "I-5",
+        "mile_post": "307",
+        "municipality": "Portland",
+        "county": "Multnomah",
+        "state": "OR",
+        "latitude": 45.573049,
+        "longitude": -122.762861,
+        "number_of_spots": null
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 3,
+      "geometry": {"type": "Point", "coordinates": [-87.418284999809, 30.5757180003016]},
+      "properties": {
+        "OBJECTID": 3,
+        "state_number": "01",
+        "nhs_rest_stop": "Baldwin County Welcome Center",
+        "highway_route": "I-10 WB",
+        "mile_post": "65.8",
+        "municipality": "Seminole",
+        "county": "Baldwin",
+        "state": "AL",
+        "latitude": 30.575718,
+        "longitude": -87.418285,
+        "number_of_spots": 0
+      }
+    }
+  ]
+}

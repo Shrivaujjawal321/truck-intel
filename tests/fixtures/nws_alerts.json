@@ -1,0 +1,75 @@
+{
+  "type": "FeatureCollection",
+  "title": "Current watches, warnings, and advisories",
+  "updated": "2026-07-22T09:00:00+00:00",
+  "features": [
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.aaa.001.1",
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[-104.6, 41.1], [-104.6, 41.4], [-104.1, 41.4], [-104.1, 41.1], [-104.6, 41.1]]
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.aaa.001.1",
+        "@type": "wx:Alert",
+        "id": "urn:oid:2.49.0.1.840.0.aaa.001.1",
+        "areaDesc": "Laramie County, WY",
+        "geocode": {"UGC": ["WYC021"]},
+        "affectedZones": ["https://api.weather.gov/zones/county/WYC021"],
+        "sent": "2026-07-22T01:48:00-06:00",
+        "effective": "2026-07-22T01:48:00-06:00",
+        "onset": "2026-07-22T13:00:00-06:00",
+        "expires": "2026-07-22T14:00:00-06:00",
+        "ends": "2026-07-23T00:00:00-06:00",
+        "status": "Actual",
+        "messageType": "Alert",
+        "category": "Met",
+        "severity": "Severe",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "event": "Severe Thunderstorm Warning",
+        "senderName": "NWS Cheyenne WY",
+        "headline": "Severe Thunderstorm Warning issued July 22",
+        "description": "Large hail and damaging winds possible.",
+        "instruction": "Move to an interior room.",
+        "response": "Shelter"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.bbb.001.1",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.bbb.001.1",
+        "@type": "wx:Alert",
+        "id": "urn:oid:2.49.0.1.840.0.bbb.001.1",
+        "areaDesc": "Natrona County Lower Elevations; Casper Mountain",
+        "geocode": {"UGC": ["WYZ433", "WYZ434"]},
+        "affectedZones": [
+          "https://api.weather.gov/zones/forecast/WYZ433",
+          "https://api.weather.gov/zones/forecast/WYZ434"
+        ],
+        "sent": "2026-07-21T20:15:00-06:00",
+        "effective": "2026-07-21T20:15:00-06:00",
+        "onset": "2026-07-22T06:00:00-06:00",
+        "expires": "2026-07-22T18:00:00-06:00",
+        "ends": null,
+        "status": "Actual",
+        "messageType": "Alert",
+        "category": "Met",
+        "severity": "Moderate",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "event": "Heat Advisory",
+        "senderName": "NWS Riverton WY",
+        "headline": "Heat Advisory issued July 21",
+        "description": "Temperatures up to 100 expected.",
+        "instruction": "Drink plenty of fluids.",
+        "response": "Execute"
+      }
+    }
+  ]
+}

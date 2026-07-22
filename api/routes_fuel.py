@@ -31,7 +31,8 @@ def list_fuel_prices(
     rows = common.q_all(
         f"""
         SELECT DISTINCT ON (f.region, f.product)
-               f.region, f.product, f.week_of, f.price_usd_gal,
+               f.region, f.product, f.week_of,
+               f.price_usd_gal::float8 AS price_usd_gal,
                f.source_id, f.run_id, f.ingested_at, f.observed_at,
                COALESCE(s.attribution_text, %s) AS attribution
         FROM core.fuel_prices AS f

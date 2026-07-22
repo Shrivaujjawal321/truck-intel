@@ -1,20 +1,24 @@
 # FHWA National Bridge Inventory — annual bulk file (research/bridges.md, verified 2026-07-22).
-# url is the verified per-year download page listing the ZIPs (delimited + fixed-width);
-# design/pipeline.md records the 2025 delimited national ZIP as
-# https://www.fhwa.dot.gov/bridge/nbi/2025/delimited/NBI2025.zip
+# url is the national DELIMITED ZIP itself (bulk_http hands raw ZIP bytes to parsers.nbi).
+# Verified live 2026-07-22: HTTP 200, 58.7MB, accept-ranges, member
+# 2025AllRecordsDelimitedAllStates.txt. The pipeline.md URL
+# https://www.fhwa.dot.gov/bridge/nbi/2025/delimited/NBI2025.zip is 404, and the
+# per-year page ascii2025.cfm is HTML (not a ZIP) — neither works as a fetch target.
 # Units warning (NBI Coding Guide): clearances in METERS, ratings in METRIC TONS —
 # the parser converts before publishing (min_vert_clearance_in is inches).
 id: nbi_annual
 name: FHWA National Bridge Inventory (annual bulk ZIP)
 owner: Federal Highway Administration (FHWA), US DOT
-url: https://www.fhwa.dot.gov/bridge/nbi/ascii2025.cfm
+url: https://www.fhwa.dot.gov/bridge/nbi/2025allstatesallrecsdel.zip
 kind: bulk_http
 load_pattern: snapshot_swap
-schedule_minutes: 10080        # weekly probe for a new annual vintage (cheap conditional request)
+schedule_minutes: 10080        # weekly: engine probes newer-vintage URLs (year+1..)
+                               # then conditional-GETs this one (engine._candidate_urls)
 license: US public domain
 attribution: "Federal Highway Administration (FHWA), US DOT"
 slo_hours: 9490                # 13 months — annual dataset
 gates:
   min_rows: 550000             # 2025 file = 624,193 bridges; a truncated file must never publish
   max_row_delta_pct: 10
+  geometry_valid_pct: 98       # MASTER_PLAN §11: systematic coord drift must not publish
 auth: null

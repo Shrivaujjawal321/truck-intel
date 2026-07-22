@@ -16,6 +16,13 @@ US_BBOXES: tuple[tuple[float, float, float, float], ...] = (
     (-67.6, 17.5, -64.4, 18.6),     # Puerto Rico + USVI
 )
 
+# Fields gate 1 additionally requires to parse as floats when required.
+_FLOAT_FIELDS = ("lat", "lon", "price_usd_gal")
+
+
+def _reject(reason: str, row: dict) -> dict:
+    return {"reason": reason, "raw_record": row}
+
 
 def gate1_schema(
     rows: Iterable[dict],
@@ -30,7 +37,32 @@ def gate1_schema(
     Returns (ok_rows, rejects); each reject is
     {"reason": str, "raw_record": dict} ready for quality.rejects.
     """
-    raise NotImplementedError
+    ok_rows: list[dict] = []
+    rejects: list[dict] = []
+    for row in rows:
+        reason = None
+        for field in required_fields:
+            if field not in row or row[field] is None:
+                reason = f"missing_required:{field}"
+                break
+            if field in _FLOAT_FIELDS:
+                try:
+                    float(row[field])
+                except (TypeError, ValueError):
+                    reason = f"unparseable:{field}"
+                    break
+        if reason is None:
+            ok_rows.append(row)
+        else:
+            rejects.append(_reject(reason, row))
+    return ok_rows, rejects
+
+
+def _in_any_us_box(lon: float, lat: float) -> bool:
+    return any(
+        lon_min <= lon <= lon_max and lat_min <= lat <= lat_max
+        for lon_min, lat_min, lon_max, lat_max in US_BBOXES
+    )
 
 
 def gate2_coords(rows: Iterable[dict]) -> tuple[list[dict], list[dict]]:
@@ -47,4 +79,23 @@ def gate2_coords(rows: Iterable[dict]) -> tuple[list[dict], list[dict]]:
 
     Returns (ok_rows, rejects) shaped like gate1_schema.
     """
-    raise NotImplementedError
+    ok_rows: list[dict] = []
+    rejects: list[dict] = []
+    for row in rows:
+        if "lat" not in row or "lon" not in row:
+            ok_rows.append(row)  # non-point rows (fuel, zone-only alerts) pass through
+            continue
+        try:
+            lat, lon = float(row["lat"]), float(row["lon"])
+        except (TypeError, ValueError):
+            rejects.append(_reject("coords_out_of_range", row))
+            continue
+        if (lat == 0.0 and lon == 0.0) or abs(lat) > 90.0 or abs(lon) > 180.0:
+            rejects.append(_reject("coords_out_of_range", row))
+        elif _in_any_us_box(lon, lat):
+            ok_rows.append(row)
+        elif _in_any_us_box(lat, lon):  # would pass with axes swapped
+            rejects.append(_reject("latlon_swapped", row))
+        else:
+            rejects.append(_reject("coords_not_in_us", row))
+    return ok_rows, rejects

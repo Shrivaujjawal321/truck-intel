@@ -1,0 +1,67 @@
+{
+  "response": {
+    "total": "4",
+    "dateFormat": "YYYY-MM-DD",
+    "frequency": "weekly",
+    "data": [
+      {
+        "period": "2026-07-13",
+        "duoarea": "NUS",
+        "area-name": "U.S.",
+        "product": "EPD2D",
+        "product-name": "No 2 Diesel",
+        "process": "PTE",
+        "process-name": "Retail Sales",
+        "series": "EMD_EPD2D_PTE_NUS_DPG",
+        "series-description": "U.S. No 2 Diesel Retail Prices (Dollars per Gallon)",
+        "value": 3.681,
+        "units": "$/GAL"
+      },
+      {
+        "period": "2026-07-13",
+        "duoarea": "SCA",
+        "area-name": "CALIFORNIA",
+        "product": "EPD2D",
+        "product-name": "No 2 Diesel",
+        "process": "PTE",
+        "process-name": "Retail Sales",
+        "series": "EMD_EPD2D_PTE_SCA_DPG",
+        "series-description": "California No 2 Diesel Retail Prices (Dollars per Gallon)",
+        "value": "5.102",
+        "units": "$/GAL"
+      },
+      {
+        "period": "2026-07-13",
+        "duoarea": "R1X",
+        "area-name": "PADD 1A",
+        "product": "EPD2D",
+        "product-name": "No 2 Diesel",
+        "process": "PTE",
+        "process-name": "Retail Sales",
+        "series": "EMD_EPD2D_PTE_R1X_DPG",
+        "series-description": "New England (PADD 1A) No 2 Diesel Retail Prices (Dollars per Gallon)",
+        "value": 3.994,
+        "units": "$/GAL"
+      },
+      {
+        "period": "2026-07-06",
+        "duoarea": "R40",
+        "area-name": "PADD 4",
+        "product": "EPD2D",
+        "product-name": "No 2 Diesel",
+        "process": "PTE",
+        "process-name": "Retail Sales",
+        "series": "EMD_EPD2D_PTE_R40_DPG",
+        "series-description": "Rocky Mountain (PADD 4) No 2 Diesel Retail Prices (Dollars per Gallon)",
+        "value": null,
+        "units": "$/GAL"
+      }
+    ],
+    "description": "Weekly retail diesel prices"
+  },
+  "request": {
+    "command": "/v2/petroleum/pri/gnd/data/",
+    "params": {"frequency": "weekly"}
+  },
+  "apiVersion": "2.1.8"
+}

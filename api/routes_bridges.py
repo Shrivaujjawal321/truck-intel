@@ -37,7 +37,8 @@ def list_bridges(
     rows = common.q_all(
         f"""
         SELECT b.nbi_id, b.name, b.state, ST_AsGeoJSON(b.geom) AS gj,
-               b.min_vert_clearance_in, b.operating_rating, b.inventory_rating,
+               b.min_vert_clearance_in::float8 AS min_vert_clearance_in,
+               b.operating_rating, b.inventory_rating,
                b.posting_status, b.source_id, b.run_id, b.ingested_at,
                b.observed_at, b.confidence,
                COALESCE(s.attribution_text, %s) AS attribution

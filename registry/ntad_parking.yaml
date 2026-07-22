@@ -18,4 +18,5 @@ slo_hours: 192                 # 8 days
 gates:
   min_rows: 1500               # dataset is 1,915 points
   max_row_delta_pct: 10
+  geometry_valid_pct: 98       # MASTER_PLAN §11: systematic coord drift must not publish
 auth: null

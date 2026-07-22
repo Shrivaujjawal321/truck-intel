@@ -9,7 +9,24 @@ Contract (plan §9, engine-enforced):
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from urllib.parse import urlsplit
+
+import requests
+
+from truckintel.config import user_agent
+
+# host -> time.monotonic() of the last request; single worker process by design.
+_last_hit: dict[str, float] = {}
+
+_DEFAULT_RETRY_AFTER_S = 30.0
+# A single-worker pipeline must never sleep for a server-chosen eternity: a
+# Retry-After beyond this cap fails the run (PoliteRefusal) and the scheduler's
+# backoff retries later — politeness preserved, pipeline never frozen.
+_MAX_RETRY_AFTER_S = 300.0
 
 
 @dataclass(frozen=True)
@@ -22,6 +39,35 @@ class PoliteResult:
     etag: str | None
     last_modified: str | None
     not_modified: bool
+
+
+class PoliteRefusal(Exception):
+    """Server refused us (403 / repeated 429). Back off; a refusal is final."""
+
+
+def _retry_after_seconds(value: str | None) -> float:
+    """Parse a Retry-After header: delta-seconds or HTTP-date. Missing/garbage
+    falls back to a conservative default — we still wait, never hammer."""
+    if not value:
+        return _DEFAULT_RETRY_AFTER_S
+    v = value.strip()
+    if v.isdigit():
+        return float(v)
+    try:
+        dt = parsedate_to_datetime(v)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (dt - datetime.now(timezone.utc)).total_seconds())
+    except (TypeError, ValueError):
+        return _DEFAULT_RETRY_AFTER_S
+
+
+def _throttle(host: str, min_interval_s: float) -> None:
+    last = _last_hit.get(host)
+    if last is not None:
+        wait = last + min_interval_s - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
 
 
 def polite_get(
@@ -48,8 +94,46 @@ def polite_get(
         PoliteRefusal: server said no (403 / repeated 429). Do not work around.
         requests.RequestException: network-level failure.
     """
-    raise NotImplementedError
+    host = urlsplit(url).netloc
+    send_headers = {"User-Agent": user_agent()}
+    if headers:
+        send_headers.update(headers)
+    if etag:
+        send_headers["If-None-Match"] = etag
+    if last_modified:
+        send_headers["If-Modified-Since"] = last_modified
 
+    retried = False
+    while True:
+        _throttle(host, min_interval_s)
+        resp = requests.get(url, params=params, headers=send_headers, timeout=timeout_s)
+        _last_hit[host] = time.monotonic()
 
-class PoliteRefusal(Exception):
-    """Server refused us (403 / repeated 429). Back off; a refusal is final."""
+        if resp.status_code == 403:
+            raise PoliteRefusal(f"403 from {host} — a refusal is final, not retrying")
+        if resp.status_code in (429, 503):
+            if retried:
+                if resp.status_code == 429:
+                    raise PoliteRefusal(f"second 429 from {host} — backing off")
+                break  # second 503: hand the failure to the caller, never loop
+            retried = True
+            wait = _retry_after_seconds(resp.headers.get("Retry-After"))
+            if wait > _MAX_RETRY_AFTER_S:
+                raise PoliteRefusal(
+                    f"{resp.status_code} from {host} with Retry-After {wait:.0f}s "
+                    f"(> {_MAX_RETRY_AFTER_S:.0f}s cap) — failing run; retry later"
+                )
+            time.sleep(wait)
+            continue
+        break
+
+    not_modified = resp.status_code == 304
+    return PoliteResult(
+        status_code=resp.status_code,
+        content=b"" if not_modified else resp.content,
+        # on 304 servers may omit the validators — keep the ones we sent
+        etag=resp.headers.get("ETag") or (etag if not_modified else None),
+        last_modified=resp.headers.get("Last-Modified")
+        or (last_modified if not_modified else None),
+        not_modified=not_modified,
+    )
