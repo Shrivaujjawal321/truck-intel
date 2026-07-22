@@ -1,0 +1,26 @@
+# truck-intel businesses rebuild (MASTER_PLAN §5.2: Overture/FSQ refresh monthly;
+# ruling §3.1-6: the businesses derived job rebuilds core.businesses from staging).
+#
+# Chain semantics are deliberate (fail-safe rebuild):
+#   1. --pull-overture   (NO leading '-'): the permissive primary source. If it
+#      fails the service ABORTS before conflate, so a bad pull never rebuilds
+#      core.businesses from empty/partial staging — the last good table stays live.
+#   2. --pull-fsq --fsq-mirror  (leading '-'): enrichment via the keyless
+#      source.coop mirror (no HF_TOKEN wait-item). Best-effort: a failure is
+#      ignored and conflate proceeds Overture-only.
+#   3. --conflate  (NO leading '-'): full rebuild + atomic snapshot swap, only
+#      reached when the Overture pull succeeded.
+# US-wide pulls are heavy (tens of GB of remote parquet scanned) — this is the
+# monthly rebuild, not a tick job.
+[Unit]
+Description=truck-intel businesses rebuild (Overture + FSQ mirror -> conflate)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+# per-pull runtime is long; systemd default has no timeout for oneshot, but be explicit
+TimeoutStartSec=6h
+ExecStart=%h/.local/bin/uv run python scripts/businesses_pipeline.py --pull-overture
+ExecStart=-%h/.local/bin/uv run python scripts/businesses_pipeline.py --pull-fsq --fsq-mirror
+ExecStart=%h/.local/bin/uv run python scripts/businesses_pipeline.py --conflate

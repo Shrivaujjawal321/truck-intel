@@ -1,0 +1,14 @@
+# Fires truckintel-weekly-digest.service every Monday 08:00 local — a
+# start-of-week ops readout for the solo operator.
+# Persistent=true: if the box was off on Monday morning, the digest runs on the
+# next boot rather than silently skipping a week.
+[Unit]
+Description=truck-intel weekly digest timer (Mondays 08:00)
+
+[Timer]
+OnCalendar=Mon *-*-* 08:00:00
+AccuracySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

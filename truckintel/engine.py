@@ -687,22 +687,86 @@ def tick() -> None:
     print(f"tick: synced {len(sources)} sources, enqueued {enqueued} jobs")
 
 
+# ---------------------------------------------------------------------------
+# Derived-job dispatch (ruling §3.1-6). The allow-list below is the ONLY way a
+# derived job reaches a subprocess: exact argv per source_id, scripts always
+# inside <repo>/scripts/. The runner scripts own their audited ops.source_runs
+# rows (synthetic/derived ids — the quality_nightly pattern). A source_id
+# missing here, or an entry whose script does not exist yet (wave-2 tracks
+# create osm_extract.py / businesses_pipeline.py), finishes the job 'failed'
+# with an honest message — never a crash, never a fake 'done'.
+# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_SCRIPTS_DIR = _REPO_ROOT / "scripts"
+
+_DERIVED_RUNNERS: dict[str, list[str]] = {
+    RESCORE_SOURCE_ID: ["scripts/quality_nightly.py", "--rescore", "all"],
+    "osm_pois": ["scripts/osm_extract.py", "--job", "pois"],
+    "osm_ways": ["scripts/osm_extract.py", "--job", "ways"],
+    # businesses rebuild chain (ruling §3.1-6): the two pulls refill their own
+    # staging tables, then the conflate rebuilds core.businesses from staging.
+    # Ordering is enforced by the weekly-businesses timer (pull -> pull ->
+    # conflate), not the queue; these entries exist so an enqueued pull/conflate
+    # job actually runs (consistency with the seeded derived sources) rather
+    # than failing "no runner". fsq_places uses the keyless source.coop mirror
+    # by default (no HF_TOKEN wait-item) — a token, if set, is used by the CLI.
+    "overture_places": ["scripts/businesses_pipeline.py", "--pull-overture"],
+    "fsq_places": ["scripts/businesses_pipeline.py", "--pull-fsq", "--fsq-mirror"],
+    "businesses_conflate": ["scripts/businesses_pipeline.py", "--conflate"],
+}
+
+
+def _runner_env() -> dict[str, str]:
+    """Subprocess environment for derived runners: os.environ WITH .env folded
+    in (wave-1 gap: a worker that never ran run_source had not loaded .env, so
+    runners missed DATABASE_URL/keys). load_dotenv mutates os.environ once and
+    real env vars still win."""
+    load_dotenv()
+    return dict(os.environ)
+
+
 def _run_derived_job(job: dict) -> None:
-    """Execute one claimed DERIVED job (quality_rescore) by shelling out to
-    the quality runner — quality_nightly.py writes its own audited
-    ops.source_runs row ('quality_rescore'). An unknown derived source is
-    finished 'failed' with an honest message, never faked 'done'."""
-    if job["source_id"] != RESCORE_SOURCE_ID:
+    """Execute one claimed DERIVED job via the _DERIVED_RUNNERS allow-list.
+
+    Dispatch rules (all failures are honest 'failed' jobs, never crashes):
+    - source_id not in the allow-list -> failed ("no derived-job runner").
+    - argv script resolving outside <repo>/scripts/ -> failed (defense in
+      depth: the dict is code, but a tampered/monkeypatched entry must never
+      execute an arbitrary path).
+    - script not created yet -> failed ("runner script missing").
+    Runners execute with cwd=repo root and .env-loaded env (_runner_env); they
+    write their own audited ops.source_runs rows.
+    """
+    source_id = job["source_id"]
+    argv = _DERIVED_RUNNERS.get(source_id)
+    if argv is None:
         with get_conn() as conn:
             jobs.finish_job(
                 conn, job["job_id"], "failed",
-                f"no derived-job runner for {job['source_id']!r} "
-                "(engine worker runs only quality_rescore)",
+                f"no derived-job runner for {source_id!r} "
+                f"(engine allow-list: {sorted(_DERIVED_RUNNERS)})",
+            )
+        return
+    script = (_REPO_ROOT / argv[0]).resolve()
+    if _SCRIPTS_DIR.resolve() not in script.parents:
+        with get_conn() as conn:
+            jobs.finish_job(
+                conn, job["job_id"], "failed",
+                f"refusing derived runner for {source_id!r}: {argv[0]!r} "
+                "resolves outside <repo>/scripts/",
+            )
+        return
+    if not script.is_file():
+        with get_conn() as conn:
+            jobs.finish_job(
+                conn, job["job_id"], "failed",
+                f"runner script missing for {source_id!r}: {argv[0]} "
+                "(not created yet — honest failed run, no work done)",
             )
         return
     proc = subprocess.run(
-        [sys.executable, "scripts/quality_nightly.py", "--rescore", "all"],
-        cwd=Path(__file__).resolve().parents[1],
+        [sys.executable, *argv],
+        cwd=_REPO_ROOT, env=_runner_env(),
         capture_output=True, text=True,
     )
     with get_conn() as conn:
@@ -712,25 +776,25 @@ def _run_derived_job(job: dict) -> None:
             detail = (proc.stderr or proc.stdout or "").strip()[-400:]
             jobs.finish_job(
                 conn, job["job_id"], "failed",
-                _redact(f"rescore exited {proc.returncode}: {detail}")[:500],
+                _redact(f"{source_id} runner exited {proc.returncode}: {detail}")[:500],
             )
-        # Ruling §3.1-10 guard: a swap that committed while this rescore was
-        # RUNNING had its enqueue swallowed by the one-active-job index (and
-        # the in-flight rescore may have scored the pre-swap table, or died on
-        # the dropped one) — re-queue so the fresh table is rescored now, not
-        # at the 03:30 nightly.
-        if job.get("started_at") is not None and jobs.snapshot_swapped_since(
-            conn, job["started_at"]
-        ):
+        # Ruling §3.1-10 guard (quality_rescore only): a swap that committed
+        # while this rescore was RUNNING had its enqueue swallowed by the
+        # one-active-job index (and the in-flight rescore may have scored the
+        # pre-swap table, or died on the dropped one) — re-queue so the fresh
+        # table is rescored now, not at the 03:30 nightly.
+        if (source_id == RESCORE_SOURCE_ID
+                and job.get("started_at") is not None
+                and jobs.snapshot_swapped_since(conn, job["started_at"])):
             enqueue_rescore(conn)
 
 
 def worker_loop() -> None:
     """Drain ops.job_queue forever: claim_job -> run_source -> finish_job.
     One job at a time in MVP; sleeps briefly when the queue is empty.
-    When no non-derived job is queued, derived jobs (quality_rescore) are
-    claimed with jobs.claim_job(derived=True) and dispatched to the quality
-    runner — real ingests always take priority over rescores."""
+    When no non-derived job is queued, derived jobs are claimed with
+    jobs.claim_job(derived=True) and dispatched via the _DERIVED_RUNNERS
+    allow-list — real ingests always take priority over derived work."""
     print("worker: draining ops.job_queue (Ctrl-C to stop)")
     while True:
         # Claim in its own SHORT transaction — a multi-minute ingest must not

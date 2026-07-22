@@ -1,0 +1,21 @@
+# Caltrans CWWP2 chain controls — District 9 (eastern Sierra: US-395, US-6,
+# SR-108/120 Sonora/Tioga corridors; Bishop). KEYLESS — verified 2026-07-23:
+# GET /data/d9/cc/ccStatusD09.json -> HTTP 200, 127 records, zero auth.
+# Same parser + license posture as caltrans_cwwp2_cc_d03. License: CA state
+# open data (Caltrans CWWP2).
+id: caltrans_cwwp2_cc_d09
+name: "Caltrans chain controls — District 9 (eastern Sierra: US-395/US-6)"
+owner: California DOT (Caltrans)
+url: https://cwwp2.dot.ca.gov/data/d9/cc/ccStatusD09.json
+kind: live_json
+load_pattern: event_lifecycle
+parser: cwwp2
+schedule_minutes: 15
+slo_hours: 24
+license: CA state open data (Caltrans CWWP2, keyless public JSON)
+attribution: "California DOT (Caltrans CWWP2)"
+gates:
+  min_rows: 0
+  max_row_delta_pct: null
+  required_fields: [event_id, kind]
+auth: null

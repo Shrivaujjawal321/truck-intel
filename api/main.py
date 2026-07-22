@@ -12,9 +12,11 @@ from api import (
     common,
     routes_bridges,
     routes_fuel,
+    routes_fuel_stations,
     routes_live,
     routes_meta,
     routes_parking,
+    routes_places,
     routes_tunnels,
 )
 
@@ -31,6 +33,8 @@ for _router in (
     routes_parking.router,
     routes_live.router,
     routes_fuel.router,
+    routes_fuel_stations.router,
+    routes_places.router,
     routes_meta.router,
 ):
     app.include_router(_router)

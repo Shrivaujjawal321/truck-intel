@@ -1,0 +1,13 @@
+# truck-intel weekly digest (MASTER_PLAN §4 Monitoring; Phase-2 deliverable D6).
+# One read-only sweep over ops.* + core/osm -> a plain-text digest written to
+# status_weekly.md and (with --deliver) sent to Telegram/ntfy if configured.
+# Leading '-' on ExecStart is deliberate: a delivery hiccup or DB blip must
+# surface in `systemctl status`/journald, but the timer keeps its schedule.
+[Unit]
+Description=truck-intel weekly digest (7-day ops rollup -> Telegram/ntfy)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python scripts/weekly_digest.py --days 7 --deliver

@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 sync ingest tick api status test status-page freshness
+.PHONY: db-up schema schema-phase2 schema-wave2 sync ingest tick api status test status-page freshness weekly-digest
 
 db-up:
 	./scripts/db_up.sh
@@ -11,6 +11,10 @@ schema:
 # Phase-2 additive schema (idempotent; requires `make schema` applied first)
 schema-phase2:
 	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_phase2.sql
+
+# Wave-2 additive schema (idempotent; requires schema + schema-phase2 first)
+schema-wave2:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_wave2.sql
 
 sync:
 	uv run python -m truckintel.registry
@@ -38,3 +42,7 @@ status-page:
 # freshness SLO check: exit 1 on violations (same pair the 10-min timer runs)
 freshness:
 	uv run python scripts/freshness_check.py
+
+# weekly digest: 7-day ops rollup -> status_weekly.md (+ --deliver to send)
+weekly-digest:
+	uv run python scripts/weekly_digest.py --days 7

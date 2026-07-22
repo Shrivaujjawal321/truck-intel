@@ -1,0 +1,23 @@
+# Caltrans CWWP2 chain controls — District 3 (Sacramento/Sierra: I-80 Donner,
+# US-50 Echo Summit, SR-89 Luther Pass). KEYLESS — verified on the wire
+# 2026-07-23: GET /data/d3/cc/ccStatusD03.json -> HTTP 200, 230 records, zero
+# auth (research/live-ops.md adversarial pass). The flagship keyless 511-class
+# live-ops adapter — most state 511s need a key + signed DAA (Phase-2 wait
+# items); Caltrans does not, so this proves the framework with no human latency.
+# License evidence: CA state open data (Caltrans CWWP2, keyless public JSON).
+id: caltrans_cwwp2_cc_d03
+name: "Caltrans chain controls — District 3 (Sierra: Donner/Echo/Luther)"
+owner: California DOT (Caltrans)
+url: https://cwwp2.dot.ca.gov/data/d3/cc/ccStatusD03.json
+kind: live_json
+load_pattern: event_lifecycle
+parser: cwwp2
+schedule_minutes: 15
+slo_hours: 24                  # chain-control status is polled; 24h is a slack SLO
+license: CA state open data (Caltrans CWWP2, keyless public JSON)
+attribution: "California DOT (Caltrans CWWP2)"
+gates:
+  min_rows: 0                  # zero in-service controls (or all-summer R-0) is legitimate
+  max_row_delta_pct: null      # row-delta gate is not meaningful for event feeds
+  required_fields: [event_id, kind]   # gate 1 - lifecycle tracking keyed on event_id
+auth: null

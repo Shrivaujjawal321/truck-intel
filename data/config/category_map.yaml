@@ -1,0 +1,187 @@
+# =============================================================================
+# category_map.yaml — source-category -> truck-taxonomy mapping (in git, §10.3)
+#
+# Registry-style source records (these two sources are script-run, not
+# engine-run; their ops.sources rows are seeded by scripts/businesses_pipeline.py
+# with kind='derived' so sync_sources never disables them and the tick never
+# enqueues them):
+#
+#   id:           overture_places
+#   name:         Overture Maps Foundation — places theme (GeoParquet on S3)
+#   url:          s3://overturemaps-us-west-2/release/<release>/theme=places/type=place/
+#   license:      CDLA-Permissive-2.0 (places theme; mixed contributors also
+#                 CC0-1.0 / Apache-2.0 — all permissive, no share-alike)
+#   evidence:     https://docs.overturemaps.org/attribution/  (verified in
+#                 research/businesses.md §1.2, re-verified live 2026-07-22:
+#                 S3 listing shows exactly one retained release, 2026-06-17.0)
+#   attribution:  © Overture Maps Foundation
+#
+#   id:           fsq_places
+#   name:         Foursquare Open Source Places (parquet via Hugging Face, gated
+#                 free account; anonymous stale mirror on source.coop)
+#   url:          hf://datasets/foursquare/fsq-os-places/release/dt=<release>/places/parquet/
+#   license:      Apache-2.0 (verified: NOTICE.txt in the retired
+#                 s3://fsq-os-places-us-east-1 bucket, fetched live 2026-07-22;
+#                 HF dataset card tag license:apache-2.0)
+#   evidence:     https://huggingface.co/datasets/foursquare/fsq-os-places
+#                 (HF card data_files verified live 2026-07-22:
+#                 release/dt=2026-07-09/places/parquet/*.parquet)
+#   attribution:  Foursquare OS Places (Apache-2.0) — NOTICE.txt preserved
+#
+# Mapping ground rules (quality-ai.md §10.3):
+# - Static table in git, deterministic. The AI long-tail job (Phase 4) may
+#   APPEND here; every appended verdict becomes a deterministic rule.
+# - Values must be slugs from the CHECK-enforced taxonomy in
+#   sql/schema_wave2.sql. 'unclassified' is never mapped here — it is the
+#   safe default for what the pulls exclude, not a pull target.
+# - Unmapped source categories are EXCLUDED by the pull's pushdown filter and
+#   counted in the ops.source_runs message — never silently dropped.
+# - GENERAL vehicle repair/parts ARE mapped, but under HONEST general slugs
+#   (auto_repair / auto_parts) — NEVER relabeled truck-specific. A stranded
+#   tractor can genuinely use a general/brake/transmission/engine shop or a
+#   general parts store (fluids, filters, DEF, bulbs, batteries), so we surface
+#   them truthfully. What stays UNMAPPED is passenger-only or non-repair:
+#   car_wash / auto_detailing (cosmetic, passenger), car/used-car dealerships,
+#   generic parking, motorcycle/RV/hybrid/motorsport-specific repair,
+#   it_service_and_computer_repair (NOT a vehicle), oil_and_gas (a commodity,
+#   not a shop), inspection/emissions/smog (not repair). Calling any of those
+#   'truck_repair' — or even 'auto_repair' — would be fabrication. Truck-level
+#   tag signals (hgv/diesel) live in the osm schema (osm.fuel_stations
+#   tri-states), never copied into core.businesses.
+#
+# Overture slugs verified against the taxonomy CSV
+# (github.com/OvertureMaps/schema, docs/schema/concepts/by-theme/places/
+# overture_categories.csv, fetched 2026-07-22 — the auto_repair/auto_parts
+# source slugs above all exist there under the 'automotive' branch). FSQ labels
+# verified against live fsq_category_labels values in the source.coop places
+# parquet, re-queried 2026-07-22 (newest mirrored release 2025-02-06): a
+# Manhattan bbox pull confirmed the exact label strings "Automotive Repair
+# Shop" (2100), bare "Automotive Service" (57), "Transmissions Shop" (49) and
+# "Car Parts and Accessories" (180).
+# =============================================================================
+
+overture:
+  # truck-core
+  truck_stop: truck_stop
+  truck_gas_station: truck_stop
+  gas_station: fuel_station
+  truck_repair: truck_repair
+  truck_repair_and_services_for_businesses: truck_repair
+  emergency_roadside_service: mobile_repair
+  roadside_assistance: mobile_repair
+  trailer_repair: trailer_repair
+  # --- general vehicle repair (HONEST general slug, NOT truck-specific) -------
+  # auto_repair = a general mechanic / brake / transmission / engine /
+  # electrical / exhaust shop. Included because a disabled tractor can use a
+  # general repair shop; we do NOT relabel it truck_repair (truck_repair stays
+  # its own truck-specific slug above, and wins the merge via CATEGORY_SLUGS
+  # priority when a record carries both). Overture's generic automotive_repair
+  # (~1698 in NYC) was previously UNMAPPED, so a stranded trucker saw almost no
+  # repair shops — that was the honest-but-unhelpful gap this block closes.
+  # Excluded on purpose: motorcycle_repair / hybrid_car_repair /
+  # recreation_vehicle_repair / motorsport_vehicle_repair (not truck-usable),
+  # auto_body_shop / auto_detailing / car_wash (cosmetic), car_inspection /
+  # emissions_inspection (not repair).
+  automotive_repair: auto_repair
+  automotive_services_and_repair: auto_repair
+  brake_service_and_repair: auto_repair
+  transmission_repair: auto_repair
+  engine_repair_service: auto_repair
+  auto_electrical_repair: auto_repair
+  exhaust_and_muffler_repair: auto_repair
+  # general vehicle parts retail (HONEST general slug, distinct from
+  # truck_parts). A general auto-parts store carries fluids, filters, DEF
+  # jugs, bulbs, batteries a trucker can use; truck_parts (above) stays the
+  # truck-specific slug and wins the merge when both apply.
+  automotive_parts_and_accessories: auto_parts
+  # --------------------------------------------------------------------------
+  tire_shop: tire_service
+  tire_repair_shop: tire_service
+  tire_dealer_and_repair: tire_service
+  b2b_tires: tire_service
+  wheel_and_rim_repair: tire_service
+  towing_service: towing
+  b2b_truck_equipment_parts_and_accessories: truck_parts
+  truck_dealer: truck_dealer
+  truck_dealer_for_businesses: truck_dealer
+  commercial_vehicle_dealer: truck_dealer
+  rest_areas: rest_area
+  # driver services
+  restaurant: restaurant
+  fast_food_restaurant: fast_food
+  cafe: cafe
+  coffee_shop: cafe
+  grocery_store: grocery
+  supermarket: grocery
+  motel: motel
+  hotel: hotel
+  hospital: medical
+  urgent_care_clinic: medical
+  pharmacy: pharmacy
+  laundromat: laundry
+  laundry_services: laundry
+  atms: atm_bank
+  banks: atm_bank
+  bank_credit_union: atm_bank
+
+fsq:
+  # truck-core (full fsq_category_labels paths, exact match)
+  "Travel and Transportation > Truck Stop": truck_stop
+  "Travel and Transportation > Fuel Station": fuel_station
+  "Travel and Transportation > Rest Area": rest_area
+  "Business and Professional Services > Automotive Service > Tire Repair Shop": tire_service
+  "Business and Professional Services > Automotive Service > Towing Service": towing
+  # general vehicle repair (HONEST general slug, NOT truck-specific) — FSQ's
+  # taxonomy is coarser than Overture's, so the general repair leaf is the
+  # single "Automotive Repair Shop" (~2100 in Manhattan, live-verified
+  # 2026-07-22 against the source.coop mirror) plus the bare "Automotive
+  # Service" parent (generic service records) and "Transmissions Shop".
+  # Excluded on purpose: "Car Wash and Detail" (cosmetic/passenger),
+  # "Motorcycle Repair Shop", "Oil Change Service" (maintenance, not repair),
+  # "Vehicle Inspection Station"/"Smog Check Shop" (not repair),
+  # "Computer Repair Service" (NOT a vehicle), all "Car Dealership" variants.
+  "Business and Professional Services > Automotive Service": auto_repair
+  "Business and Professional Services > Automotive Service > Automotive Repair Shop": auto_repair
+  "Business and Professional Services > Automotive Service > Transmissions Shop": auto_repair
+  # general vehicle parts retail (HONEST general slug, distinct from
+  # truck_parts). FSQ labels this "Car Parts and Accessories"; we map it to
+  # the general auto_parts slug (never truck_parts) — a trucker can use a
+  # general parts store for fluids/filters/DEF/bulbs/batteries.
+  "Retail > Automotive Retail > Car Parts and Accessories": auto_parts
+  # driver services
+  "Dining and Drinking > Restaurant": restaurant
+  "Dining and Drinking > Restaurant > Fast Food Restaurant": fast_food
+  "Dining and Drinking > Cafe, Coffee, and Tea House": cafe
+  "Dining and Drinking > Cafe, Coffee, and Tea House > Café": cafe
+  "Dining and Drinking > Cafe, Coffee, and Tea House > Coffee Shop": cafe
+  "Retail > Food and Beverage Retail > Grocery Store": grocery
+  "Travel and Transportation > Lodging > Motel": motel
+  "Travel and Transportation > Lodging > Hotel": hotel
+  "Health and Medicine > Hospital": medical
+  "Health and Medicine > Urgent Care Center": medical
+  "Retail > Pharmacy": pharmacy
+  "Business and Professional Services > Laundromat": laundry
+  "Business and Professional Services > Laundry Service": laundry
+  "Business and Professional Services > Financial Service > Banking and Finance > ATM": atm_bank
+  "Business and Professional Services > Financial Service > Banking and Finance > Bank": atm_bank
+
+# Taxonomy slugs NO source category maps to today — documented, not hidden.
+# The coverage test asserts: mapped slugs + this list == the full taxonomy
+# (minus 'unclassified', the safe default). Honest reasons:
+#   def_retail     — no open dataset carries DEF retail (research/fuel.md §5);
+#                    the ONLY DEF signal is the §6 brand->'inferred' config.
+#   truck_wash     — neither taxonomy has a truck-wash category (Overture has
+#                    only car_wash; mapping car washes here would fabricate).
+#   truck_parking  — Overture/FSQ 'Parking' is generic car parking; truck
+#                    parking is owned by core.parking_sites (NTAD) + osm.*.
+#   cat_scale      — no source category exists (CAT scales are branded fixtures
+#                    inside truck stops); Phase-4 AI long-tail may recover some
+#                    from names.
+#   weigh_station  — government facility, absent from both commercial
+#                    taxonomies; covered by osm.weigh_points.
+unreachable_from_sources:
+  - def_retail
+  - truck_wash
+  - truck_parking
+  - cat_scale
+  - weigh_station

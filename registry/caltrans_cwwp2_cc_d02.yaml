@@ -1,0 +1,21 @@
+# Caltrans CWWP2 chain controls — District 2 (far north: I-5 corridor, SR-299,
+# US-97; Siskiyou/Trinity passes). KEYLESS — verified 2026-07-23:
+# GET /data/d2/cc/ccStatusD02.json -> HTTP 200, 208 records, zero auth.
+# Same parser + license posture as caltrans_cwwp2_cc_d03 (one keyless CA feed,
+# per-district endpoints). License: CA state open data (Caltrans CWWP2).
+id: caltrans_cwwp2_cc_d02
+name: "Caltrans chain controls — District 2 (far north: I-5 / Siskiyous)"
+owner: California DOT (Caltrans)
+url: https://cwwp2.dot.ca.gov/data/d2/cc/ccStatusD02.json
+kind: live_json
+load_pattern: event_lifecycle
+parser: cwwp2
+schedule_minutes: 15
+slo_hours: 24
+license: CA state open data (Caltrans CWWP2, keyless public JSON)
+attribution: "California DOT (Caltrans CWWP2)"
+gates:
+  min_rows: 0
+  max_row_delta_pct: null
+  required_fields: [event_id, kind]
+auth: null

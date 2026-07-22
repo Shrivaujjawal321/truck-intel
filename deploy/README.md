@@ -1,13 +1,16 @@
 # deploy/ — systemd USER units for truck-intel
 
-Five units, per MASTER_PLAN §3.1-9: Python workers and timers run as systemd
-**user** units on the host (PostGIS runs in Docker via `scripts/db_up.sh`).
+Per MASTER_PLAN §3.1-9: Python workers and timers run as systemd **user** units
+on the host (PostGIS runs in Docker via `scripts/db_up.sh`).
 
 | Unit | What | Cadence |
 |---|---|---|
 | `truckintel-tick.service` + `.timer` | registry sync + enqueue due jobs | every 1 min |
 | `truckintel-worker.service` | queue worker: fetch → validate → publish | long-running |
 | `truckintel-freshness.service` + `.timer` | freshness SLO check, then regenerate `status.html` | every 10 min |
+| `truckintel-quality.service` + `.timer` | nightly quality ladder (gates 4-5 + confidence rescore) | daily 03:30 |
+| `truckintel-businesses.service` + `.timer` | Overture + FSQ-mirror pull → conflate rebuild of `core.businesses` | monthly, 1st @ 04:30 |
+| `truckintel-weekly-digest.service` + `.timer` | 7-day ops rollup → `status_weekly.md` (+ Telegram/ntfy) | Mondays 08:00 |
 | `truckintel-api.service` | uvicorn `api.main:app` on 127.0.0.1:8000 | long-running |
 
 ## Assumptions baked into the unit files
@@ -26,7 +29,8 @@ cp deploy/truckintel-*.service deploy/truckintel-*.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
 
 # timers (they pull in their .service on each firing)
-systemctl --user enable --now truckintel-tick.timer truckintel-freshness.timer
+systemctl --user enable --now truckintel-tick.timer truckintel-freshness.timer \
+    truckintel-quality.timer truckintel-businesses.timer truckintel-weekly-digest.timer
 # long-running services
 systemctl --user enable --now truckintel-worker.service truckintel-api.service
 ```

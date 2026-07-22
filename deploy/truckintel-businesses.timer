@@ -1,0 +1,15 @@
+# Fires truckintel-businesses.service monthly (1st of the month, 04:30 local) —
+# matching Overture + FSQ's ~monthly release cadence (MASTER_PLAN §5.2). Runs
+# after the nightly quality job (03:30) so it never overlaps the rescore.
+# Persistent=true: a missed month (box off on the 1st) runs on next boot rather
+# than silently skipping a rebuild.
+[Unit]
+Description=truck-intel businesses monthly rebuild timer (1st @ 04:30)
+
+[Timer]
+OnCalendar=*-*-01 04:30:00
+AccuracySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

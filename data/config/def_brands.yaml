@@ -1,0 +1,45 @@
+# =============================================================================
+# def_brands.yaml — the §6 DEF ruling config (MASTER_PLAN, binding):
+#
+#   "the brand->DEF heuristic ('major chain truck stops dispense DEF') is a
+#    deterministic, rule-based, labeled inference — it is config in git, not
+#    AI. It is permitted as the ONE documented exception to the no-inference
+#    rule, renders as \"def\": \"inferred\", never as fact."
+#
+# Semantics (enforced by the businesses_def_inferred_only CHECK in
+# sql/schema_wave2.sql — no other value can physically land):
+#   - match          -> core.businesses.def = 'inferred'  (renders "inferred")
+#   - no match       -> NULL                              (renders "unknown")
+#   - 'no'/'yes' as facts are structurally impossible from this config.
+#
+# Matching is deterministic (scripts/businesses_pipeline.py def_inferred()):
+#   - the row's category must be in categories_gate (a Love's-branded
+#     restaurant is NOT a DEF pump);
+#   - brand_squeezed: the row's brand, lowercased and stripped to [a-z0-9],
+#     must EQUAL one of these (exact equality — never substring, so brand
+#     "TA" cannot fire on "TAvern");
+#   - name_squeezed_substrings: the squeezed row NAME must CONTAIN one of
+#     these multi-word phrases (long enough to be unambiguous).
+#
+# Every entry carries evidence_url — the chain's own DEF page or research
+# basis (research/fuel.md §5 "essentially all major-chain US truck stops
+# dispense DEF at the diesel pump"). Additions require evidence, in git.
+# =============================================================================
+
+categories_gate: [truck_stop, fuel_station]
+
+brands:
+  - brand: "Pilot Flying J"
+    evidence_url: "https://pilotflyingj.com/amenities"   # DEF at the pump chain-wide
+    brand_squeezed: [pilot, pilotflyingj, pilottravelcenters, flyingj]
+    name_squeezed_substrings: [pilottravelcenter, pilotflyingj, flyingjtravelcenter]
+
+  - brand: "Love's Travel Stops"
+    evidence_url: "https://www.loves.com/en/fuel-services/def"
+    brand_squeezed: [loves, lovestravelstops, lovestravelstop]
+    name_squeezed_substrings: [lovestravelstop, lovescountrystore]
+
+  - brand: "TA / Petro (TravelCenters of America)"
+    evidence_url: "https://www.ta-petro.com/professional-drivers/def-fuel/"  # verified in research/fuel.md §5
+    brand_squeezed: [ta, tapetro, petro, travelcentersofamerica, taexpress, petrostoppingcenters]
+    name_squeezed_substrings: [travelcentersofamerica, tatravelcenter, taexpress, petrostoppingcenter]
