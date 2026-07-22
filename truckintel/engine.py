@@ -14,17 +14,22 @@ import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import subprocess
+
+import psycopg
 from psycopg.types.json import Jsonb
 
-from truckintel import jobs
+from truckintel import jobs, quality
 from truckintel.config import load_dotenv, raw_dir
 from truckintel.db import get_conn
 from truckintel.loaders import event_lifecycle_upsert, fuel_upsert, snapshot_swap
 from truckintel.politeness import PoliteRefusal, PoliteResult, polite_get
-from truckintel.registry import load_registry, sync_sources
+from truckintel.registry import SNAPSHOT_TARGETS, load_registry, sync_sources
 from truckintel.validate import gate1_schema, gate2_coords
 
 # source_id -> parser module (pipeline.md §16: one parser per format).
+# MVP fallback map — Phase-2 sources set `parser:` in their registry YAML
+# instead (validated importable at sync time); this map never grows again.
 _PARSER_MODULE = {
     "nbi_annual": "nbi",
     "ntad_parking": "ntad_parking",
@@ -35,8 +40,10 @@ _PARSER_MODULE = {
 # Raw-zone file extension per fetch kind (interface: what the parser receives).
 _RAW_EXT = {"bulk_http": "zip", "arcgis": "geojson", "live_json": "json", "api_keyed": "json"}
 
-# Gate-1 required fields per source (the MVP registry carries no
-# required_columns; these mirror each parser's documented output contract).
+# Gate-1 required fields per source — MVP fallback map only. Phase-2 sources
+# declare `gates.required_fields` in their registry YAML instead (pipeline.md
+# §4.1 required_columns; validated a list of strings at sync time); the
+# registry value wins, this map never grows again.
 _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "nbi_annual": ("nbi_id", "lat", "lon"),
     "ntad_parking": ("site_id", "kind", "lat", "lon"),
@@ -44,8 +51,136 @@ _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "eia_diesel": ("region", "product", "week_of", "price_usd_gal"),
 }
 
-# snapshot_swap targets (plan §5.1 naming map).
+# snapshot_swap targets (plan §5.1 naming map). MVP fallback map — Phase-2
+# sources set `target:` in their registry YAML (allow-list-validated at sync).
 _SNAPSHOT_TARGET = {"nbi_annual": "core.bridges", "ntad_parking": "core.parking_sites"}
+
+# Gate 3 (quality ladder §2): within-source natural-key dedup, keyed off the
+# publish shape — event_lifecycle feeds dedup on 'event_id'; snapshot targets
+# dedup on their table PK; upsert sources (eia_diesel: composite key
+# region/product/week_of) need no gate 3, their loader is idempotent on it.
+_DEDUP_KEY_BY_TARGET = {
+    "core.bridges": "nbi_id",
+    "core.tunnels": "tunnel_id",
+    "core.parking_sites": "site_id",
+    "osm.ways": "way_id",
+    "osm.fuel_stations": "osm_id",
+    "osm.rest_areas": "osm_id",
+    "osm.weigh_points": "osm_id",
+}
+
+
+def _dedup_key_field(src: dict) -> str | None:
+    """Natural-key field gate 3 dedups on, or None (no gate 3 for upserts)."""
+    if src["load_pattern"] == "event_lifecycle":
+        return "event_id"
+    if src["load_pattern"] == "snapshot_swap":
+        return _DEDUP_KEY_BY_TARGET.get(_resolve_snapshot_target(src))
+    return None
+
+# ---------------------------------------------------------------------------
+# Feed-health circuit breaker (pipeline.md §10.3) — the engine records run
+# outcomes into ops.feed_health; jobs.enqueue_due reads the state.
+#
+# How it composes with the exponential backoff in jobs.enqueue_due (exactly
+# one paces any attempt — see _ENQUEUE_SQL): while the circuit is CLOSED,
+# BACKOFF spaces individual retries after failed/gated runs (5 min doubling,
+# cap 6 h). Once the circuit is OPEN/HALF_OPEN (BREAKER_THRESHOLD consecutive
+# 'failed' runs), the breaker's cooldown alone paces recovery — one half-open
+# probe per cooldown_minutes — and gives ops a queryable per-feed liveness
+# state. 'gated' and skips count as healthy CONTACT for the breaker (the feed
+# answered; the data was bad) — backoff still paces them.
+# ---------------------------------------------------------------------------
+BREAKER_THRESHOLD = 5        # consecutive 'failed' runs that open the circuit
+BREAKER_COOLDOWN_MIN = 60    # default cooldown; per-source override lives in
+                             # ops.feed_health.cooldown_minutes
+
+_HEALTHY_STATUSES = frozenset(
+    {"success", "skipped_unchanged", "skipped_no_key", "gated"}
+)
+
+_FEED_FAILURE_SQL = """
+INSERT INTO ops.feed_health AS fh
+    (source_id, consecutive_failures, state, opened_at, cooldown_minutes,
+     last_failure_at, updated_at)
+VALUES
+    (%(sid)s, 1,
+     CASE WHEN 1 >= %(threshold)s THEN 'open' ELSE 'closed' END,
+     CASE WHEN 1 >= %(threshold)s THEN now() END,
+     %(cooldown)s, now(), now())
+ON CONFLICT (source_id) DO UPDATE SET
+    consecutive_failures = fh.consecutive_failures + 1,
+    state = CASE WHEN fh.consecutive_failures + 1 >= %(threshold)s
+                 THEN 'open' ELSE fh.state END,
+    opened_at = CASE WHEN fh.consecutive_failures + 1 >= %(threshold)s
+                     THEN now() ELSE fh.opened_at END,
+    last_failure_at = now(),
+    updated_at      = now()
+"""
+
+_FEED_SUCCESS_SQL = """
+INSERT INTO ops.feed_health AS fh
+    (source_id, consecutive_failures, state, cooldown_minutes,
+     last_success_at, updated_at)
+VALUES (%(sid)s, 0, 'closed', %(cooldown)s, now(), now())
+ON CONFLICT (source_id) DO UPDATE SET
+    consecutive_failures = 0,
+    state           = 'closed',
+    opened_at       = NULL,
+    last_success_at = now(),
+    updated_at      = now()
+"""
+
+
+def record_feed_health(conn: psycopg.Connection, source_id: str, *, ok: bool) -> None:
+    """Fold one finished run into ops.feed_health.
+
+    ok=False (a 'failed' run) increments consecutive_failures; reaching
+    BREAKER_THRESHOLD opens the circuit (opened_at = now(), also re-arming an
+    open/half_open circuit after a failed probe). ok=True resets the counter
+    and closes the circuit — a half-open probe success recovers the feed.
+    """
+    params = {"sid": source_id, "threshold": BREAKER_THRESHOLD,
+              "cooldown": BREAKER_COOLDOWN_MIN}
+    conn.execute(_FEED_SUCCESS_SQL if ok else _FEED_FAILURE_SQL, params)
+
+
+# ---------------------------------------------------------------------------
+# Post-swap rescore hook (ruling §3.1-10): a snapshot swap replaces the table
+# object, silently dropping nightly-computed quality columns — so every
+# successful swap enqueues one rescore job. The quality track implements the
+# job runner; the engine only enqueues (and its worker never claims derived
+# jobs — see jobs.claim_job).
+# ---------------------------------------------------------------------------
+RESCORE_SOURCE_ID = "quality_rescore"  # seeded in sql/schema_phase2.sql
+
+_RESCORE_ENQUEUE_SQL = (
+    "INSERT INTO ops.job_queue (source_id) VALUES (%s) "
+    "ON CONFLICT (source_id) WHERE status IN ('queued', 'running') DO NOTHING"
+)
+
+
+def enqueue_rescore(conn: psycopg.Connection,
+                    source_id: str = RESCORE_SOURCE_ID) -> bool:
+    """Enqueue the synthetic rescore job in the caller's transaction.
+
+    Savepoint-guarded: a missing ops.sources seed row (schema_phase2 not
+    applied yet) must never roll back the publish it rides on — the hook
+    degrades to a no-op and returns False. An already-QUEUED rescore job is a
+    silent no-op too (partial unique index) — safe, it runs after this commit.
+    A RUNNING rescore job also no-ops the insert (same index), which WOULD
+    lose this swap's rescore — the rescore runners close that window by
+    re-checking jobs.snapshot_swapped_since(claim time) after every job and
+    re-enqueueing (ruling §3.1-10). Returns True if a job was queued.
+    """
+    conn.execute("SAVEPOINT rescore_hook")
+    try:
+        n = conn.execute(_RESCORE_ENQUEUE_SQL, (source_id,)).rowcount
+    except psycopg.Error:
+        conn.execute("ROLLBACK TO SAVEPOINT rescore_hook")
+        return False
+    conn.execute("RELEASE SAVEPOINT rescore_hook")
+    return bool(n)
 
 # EIA Open Data API v2 query for weekly on-highway diesel (route in registry).
 _EIA_PARAMS = {
@@ -116,25 +251,74 @@ def _finish_run(
     http_status: int | None = None,
 ) -> None:
     with get_conn() as conn:
-        conn.execute(
+        row = conn.execute(
             "UPDATE ops.source_runs SET status = %s, finished_at = now(), message = %s, "
             "rows_in = %s, rows_published = %s, rows_rejected = %s, raw_sha256 = %s, "
-            "http_status = %s WHERE run_id = %s",
+            "http_status = %s WHERE run_id = %s RETURNING source_id",
             (status, message, rows_in, rows_published, rows_rejected, raw_sha256,
              http_status, run_id),
-        )
+        ).fetchone()
+        # Circuit breaker bookkeeping rides the same transaction as the run
+        # row: 'failed' counts against the feed, every other terminal status
+        # is a healthy contact/decision that resets the counter.
+        # SAVEPOINT-guarded like enqueue_rescore: a missing ops.feed_health
+        # (sql/schema_phase2.sql not applied yet) must never roll back the run
+        # row itself — without the guard, EVERY terminal run would raise
+        # UndefinedTable, lose its status write, and leave phantom 'running'
+        # rows forever. The breaker degrades to a no-op instead.
+        if row is not None and (status == "failed" or status in _HEALTHY_STATUSES):
+            conn.execute("SAVEPOINT feed_health_hook")
+            try:
+                record_feed_health(conn, row[0], ok=status != "failed")
+            except psycopg.Error:
+                conn.execute("ROLLBACK TO SAVEPOINT feed_health_hook")
+            else:
+                conn.execute("RELEASE SAVEPOINT feed_health_hook")
 
 
 def _load_source(source_id: str) -> dict:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT source_id, url, kind, load_pattern, gates, auth "
+            "SELECT source_id, url, kind, load_pattern, gates, auth, parser, target "
             "FROM ops.sources WHERE source_id = %s",
             (source_id,),
         ).fetchone()
     if row is None:
         raise ValueError(f"unknown source {source_id!r} — run `make sync` first")
-    return dict(zip(("source_id", "url", "kind", "load_pattern", "gates", "auth"), row))
+    return dict(zip(
+        ("source_id", "url", "kind", "load_pattern", "gates", "auth", "parser", "target"),
+        row,
+    ))
+
+
+def _resolve_parser_module(src: dict) -> str:
+    """Registry `parser:` wins; the hardcoded MVP map is the fallback."""
+    name = src.get("parser") or _PARSER_MODULE.get(src["source_id"])
+    if name is None:
+        raise ValueError(
+            f"no parser configured for {src['source_id']!r} — set `parser:` in "
+            "its registry YAML"
+        )
+    return name
+
+
+def _resolve_snapshot_target(src: dict) -> str:
+    """Registry `target:` wins; the hardcoded MVP map is the fallback. The
+    §5.1 allow-list is re-checked here — the value came through the DB, and an
+    unvalidated identifier must never reach a SQL string (defense in depth on
+    top of the sync-time check)."""
+    target = src.get("target") or _SNAPSHOT_TARGET.get(src["source_id"])
+    if target is None:
+        raise ValueError(
+            f"no snapshot target configured for {src['source_id']!r} — set "
+            "`target:` in its registry YAML"
+        )
+    if target not in SNAPSHOT_TARGETS:
+        raise ValueError(
+            f"snapshot target {target!r} for {src['source_id']!r} is not in "
+            f"the §5.1 allow-list: {sorted(SNAPSHOT_TARGETS)}"
+        )
+    return target
 
 
 def _last_success(source_id: str) -> tuple[str | None, int | None]:
@@ -387,12 +571,24 @@ def _execute(src: dict, run_id: int) -> None:
 
     # step 5 — parse + gates 1-2; rejects are replayable diagnostics and are
     # written even when a later registry gate aborts the publish
-    parser = importlib.import_module(f"truckintel.parsers.{_PARSER_MODULE[source_id]}")
+    parser = importlib.import_module(f"truckintel.parsers.{_resolve_parser_module(src)}")
+    # Gate-1 required fields: registry `gates.required_fields` wins (Phase-2
+    # sources — pipeline.md §4.1); the hardcoded MVP map is the fallback.
+    gates = src.get("gates") or {}
+    required = tuple(gates.get("required_fields") or _REQUIRED_FIELDS.get(source_id, ()))
     # parse streams straight into gate 1 — never a second full materialization
-    ok1, rejects1 = gate1_schema(parser.parse(content), _REQUIRED_FIELDS.get(source_id, ()))
+    ok1, rejects1 = gate1_schema(parser.parse(content), required)
     rows_in = len(ok1) + len(rejects1)
     ok_rows, rejects2 = gate2_coords(ok1)
-    rejects = rejects1 + rejects2
+    # gate 3 — within-source natural-key dedup (quality ladder; reason
+    # 'duplicate_natural_key'). Keyless rows pass through: missing keys are
+    # gate 1's rejection, and upsert sources skip gate 3 entirely.
+    dedup_field = _dedup_key_field(src)
+    if dedup_field is not None:
+        ok_rows, rejects3 = quality.dedup(ok_rows, dedup_field)
+    else:
+        rejects3 = []
+    rejects = rejects1 + rejects2 + rejects3
     _write_rejects(source_id, run_id, rejects)
 
     # step 6 — registry gates: abort publish, old table stays live.
@@ -400,7 +596,6 @@ def _execute(src: dict, run_id: int) -> None:
     # upstream schema drift (pipeline.md §10.2), never a publishable state —
     # without this, an event_lifecycle publish of [] would soft-close every
     # active event and report success.
-    gates = src.get("gates") or {}
     if rows_in > 0 and not ok_rows:
         _finish_run(
             run_id, "gated",
@@ -459,9 +654,13 @@ def _execute(src: dict, run_id: int) -> None:
     with get_conn() as conn:
         if load_pattern == "snapshot_swap":
             published = snapshot_swap(
-                conn, _SNAPSHOT_TARGET[source_id], ok_rows,
+                conn, _resolve_snapshot_target(src), ok_rows,
                 source_id=source_id, run_id=run_id,
             )
+            # Ruling §3.1-10: every successful swap re-enqueues the quality
+            # rescore job (same transaction as the publish — they land or
+            # roll back together).
+            enqueue_rescore(conn)
         elif load_pattern == "event_lifecycle":
             published = event_lifecycle_upsert(
                 conn, ok_rows, source_id=source_id, run_id=run_id
@@ -488,9 +687,50 @@ def tick() -> None:
     print(f"tick: synced {len(sources)} sources, enqueued {enqueued} jobs")
 
 
+def _run_derived_job(job: dict) -> None:
+    """Execute one claimed DERIVED job (quality_rescore) by shelling out to
+    the quality runner — quality_nightly.py writes its own audited
+    ops.source_runs row ('quality_rescore'). An unknown derived source is
+    finished 'failed' with an honest message, never faked 'done'."""
+    if job["source_id"] != RESCORE_SOURCE_ID:
+        with get_conn() as conn:
+            jobs.finish_job(
+                conn, job["job_id"], "failed",
+                f"no derived-job runner for {job['source_id']!r} "
+                "(engine worker runs only quality_rescore)",
+            )
+        return
+    proc = subprocess.run(
+        [sys.executable, "scripts/quality_nightly.py", "--rescore", "all"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True,
+    )
+    with get_conn() as conn:
+        if proc.returncode == 0:
+            jobs.finish_job(conn, job["job_id"], "done")
+        else:
+            detail = (proc.stderr or proc.stdout or "").strip()[-400:]
+            jobs.finish_job(
+                conn, job["job_id"], "failed",
+                _redact(f"rescore exited {proc.returncode}: {detail}")[:500],
+            )
+        # Ruling §3.1-10 guard: a swap that committed while this rescore was
+        # RUNNING had its enqueue swallowed by the one-active-job index (and
+        # the in-flight rescore may have scored the pre-swap table, or died on
+        # the dropped one) — re-queue so the fresh table is rescored now, not
+        # at the 03:30 nightly.
+        if job.get("started_at") is not None and jobs.snapshot_swapped_since(
+            conn, job["started_at"]
+        ):
+            enqueue_rescore(conn)
+
+
 def worker_loop() -> None:
     """Drain ops.job_queue forever: claim_job -> run_source -> finish_job.
-    One job at a time in MVP; sleeps briefly when the queue is empty."""
+    One job at a time in MVP; sleeps briefly when the queue is empty.
+    When no non-derived job is queued, derived jobs (quality_rescore) are
+    claimed with jobs.claim_job(derived=True) and dispatched to the quality
+    runner — real ingests always take priority over rescores."""
     print("worker: draining ops.job_queue (Ctrl-C to stop)")
     while True:
         # Claim in its own SHORT transaction — a multi-minute ingest must not
@@ -500,6 +740,11 @@ def worker_loop() -> None:
         with get_conn() as conn:
             job = jobs.claim_job(conn)
         if job is None:
+            with get_conn() as conn:
+                derived_job = jobs.claim_job(conn, derived=True)
+            if derived_job is not None:
+                _run_derived_job(derived_job)
+                continue
             time.sleep(_WORKER_IDLE_SLEEP_S)
             continue
         try:

@@ -1,12 +1,16 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema sync ingest tick api status test status-page freshness
+.PHONY: db-up schema schema-phase2 sync ingest tick api status test status-page freshness
 
 db-up:
 	./scripts/db_up.sh
 
 schema:
 	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema.sql
+
+# Phase-2 additive schema (idempotent; requires `make schema` applied first)
+schema-phase2:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_phase2.sql
 
 sync:
 	uv run python -m truckintel.registry

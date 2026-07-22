@@ -5,6 +5,8 @@ Git is the source of truth — adding/pausing a source is a commit, and
 """
 from __future__ import annotations
 
+import importlib
+import re
 from pathlib import Path
 
 import psycopg
@@ -14,14 +16,32 @@ from psycopg.types.json import Jsonb
 _KINDS = {"bulk_http", "arcgis", "live_json", "api_keyed"}
 _LOAD_PATTERNS = {"snapshot_swap", "event_lifecycle", "upsert"}
 
+# §5.1 naming map: the ONLY tables a YAML `target:` may name. The engine
+# re-checks against this same set before interpolating the identifier into
+# SQL — an unvalidated identifier never reaches a query string.
+SNAPSHOT_TARGETS = frozenset({
+    "core.bridges",
+    "core.tunnels",
+    "core.parking_sites",
+    "osm.ways",
+    "osm.fuel_stations",
+    "osm.rest_areas",
+    "osm.weigh_points",
+})
+
+# `parser:` must be a bare module name inside truckintel/parsers/ — no dots,
+# no path separators (dotted names would escape the parsers package).
+_PARSER_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
 _UPSERT_SQL = """
 INSERT INTO ops.sources
     (source_id, name, owner, url, kind, load_pattern, schedule_minutes,
-     slo_hours, license, attribution_text, gates, auth, enabled, synced_at)
+     slo_hours, license, attribution_text, gates, auth, parser, target,
+     enabled, synced_at)
 VALUES
     (%(id)s, %(name)s, %(owner)s, %(url)s, %(kind)s, %(load_pattern)s,
      %(schedule_minutes)s, %(slo_hours)s, %(license)s, %(attribution)s,
-     %(gates)s, %(auth)s, TRUE, now())
+     %(gates)s, %(auth)s, %(parser)s, %(target)s, TRUE, now())
 ON CONFLICT (source_id) DO UPDATE SET
     name             = EXCLUDED.name,
     owner            = EXCLUDED.owner,
@@ -34,6 +54,8 @@ ON CONFLICT (source_id) DO UPDATE SET
     attribution_text = EXCLUDED.attribution_text,
     gates            = EXCLUDED.gates,
     auth             = EXCLUDED.auth,
+    parser           = EXCLUDED.parser,
+    target           = EXCLUDED.target,
     enabled          = TRUE,
     synced_at        = now()
 """
@@ -50,7 +72,15 @@ def load_registry(registry_dir: str | Path = "registry") -> list[dict]:
 
     Returns one dict per source with exactly these keys:
         id, name, owner, url, kind, load_pattern, schedule_minutes,
-        license, attribution, slo_hours, gates (dict), auth (dict | None)
+        license, attribution, slo_hours, gates (dict), auth (dict | None),
+        parser (str | None), target (str | None)
+
+    Phase-2 OPTIONAL keys (both default to the engine's hardcoded MVP maps):
+    - parser: bare module name in truckintel/parsers/ — validated importable
+      at sync time (a typo'd parser is caught at deploy, not at 3 a.m.)
+    - target: schema-qualified snapshot_swap table — must be in the §5.1
+      allow-list SNAPSHOT_TARGETS and only valid with load_pattern
+      snapshot_swap (it would be silently ignored otherwise, so it errors)
 
     Validation to implement:
     - kind in {bulk_http, arcgis, live_json, api_keyed}
@@ -91,6 +121,20 @@ def load_registry(registry_dir: str | Path = "registry") -> list[dict]:
         gates = doc.get("gates") or {}
         if not isinstance(gates, dict):
             raise ValueError(f"{path}: gates must be a mapping")
+        # Phase-2 gate-1 channel (pipeline.md §4.1 required_columns): a list of
+        # row fields the engine's gate 1 requires present + non-null. Optional —
+        # sources absent from the engine's MVP fallback map run gate 1 empty
+        # otherwise, so new sources SHOULD declare it.
+        required_fields = gates.get("required_fields")
+        if required_fields is not None and (
+            not isinstance(required_fields, list)
+            or not required_fields
+            or not all(isinstance(f, str) and f.strip() for f in required_fields)
+        ):
+            raise ValueError(
+                f"{path}: gates.required_fields must be a non-empty list of "
+                f"field names, got {required_fields!r}"
+            )
 
         auth = doc.get("auth")
         if auth is not None:
@@ -101,6 +145,34 @@ def load_registry(registry_dir: str | Path = "registry") -> list[dict]:
             env_name = auth.get("env")
             if not isinstance(env_name, str) or not env_name.strip():
                 raise ValueError(f"{path}: auth.env must name an environment variable")
+
+        parser = doc.get("parser")
+        if parser is not None:
+            if not isinstance(parser, str) or not _PARSER_NAME_RE.match(parser):
+                raise ValueError(
+                    f"{path}: parser must be a bare module name in "
+                    f"truckintel/parsers/ (lowercase identifier), got {parser!r}"
+                )
+            try:
+                importlib.import_module(f"truckintel.parsers.{parser}")
+            except Exception as exc:
+                raise ValueError(
+                    f"{path}: parser module truckintel.parsers.{parser} is not "
+                    f"importable: {exc}"
+                ) from exc
+
+        target = doc.get("target")
+        if target is not None:
+            if target not in SNAPSHOT_TARGETS:
+                raise ValueError(
+                    f"{path}: target {target!r} is not in the §5.1 snapshot "
+                    f"allow-list: {sorted(SNAPSHOT_TARGETS)}"
+                )
+            if doc["load_pattern"] != "snapshot_swap":
+                raise ValueError(
+                    f"{path}: target is only valid with load_pattern "
+                    f"snapshot_swap, not {doc['load_pattern']!r}"
+                )
 
         sources.append(
             {
@@ -118,6 +190,8 @@ def load_registry(registry_dir: str | Path = "registry") -> list[dict]:
                 "slo_hours": _positive_int(doc.get("slo_hours"), "slo_hours", path),
                 "gates": gates,
                 "auth": auth,
+                "parser": parser,
+                "target": target,
             }
         )
     return sources
@@ -128,6 +202,8 @@ def sync_sources(conn: psycopg.Connection, sources: list[dict]) -> int:
 
     Sources present in the table but missing from the registry are marked
     enabled=false, never deleted (audit history must keep resolving).
+    kind='derived' rows are registry-less by design (synthetic sources seeded
+    in schema_phase2.sql, e.g. quality_rescore) — the sweep never disables them.
     Returns the number of rows written.
     """
     for src in sources:
@@ -137,7 +213,7 @@ def sync_sources(conn: psycopg.Connection, sources: list[dict]) -> int:
         conn.execute(_UPSERT_SQL, params)
     conn.execute(
         "UPDATE ops.sources SET enabled = FALSE, synced_at = now() "
-        "WHERE enabled AND source_id != ALL(%s)",
+        "WHERE enabled AND kind != 'derived' AND source_id != ALL(%s)",
         ([src["id"] for src in sources],),
     )
     return len(sources)

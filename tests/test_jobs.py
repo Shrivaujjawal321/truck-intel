@@ -57,7 +57,8 @@ def test_enqueue_claim_finish_lifecycle(temp_source):
             job = jobs.claim_job(conn)
             if job is None:
                 break
-            assert set(job) == {"job_id", "source_id"}
+            assert set(job) == {"job_id", "source_id", "started_at"}
+            assert job["started_at"] is not None  # claim time (DB clock)
             if job["source_id"] == SRC:
                 ours = job
                 break
@@ -136,6 +137,65 @@ def test_failed_run_backs_off_not_tick_cadence(temp_source):
         )
         jobs.enqueue_due(conn)
     assert queued() == 1
+
+
+def _queued() -> int:
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT count(*) FROM ops.job_queue "
+            "WHERE source_id = %s AND status IN ('queued', 'running')",
+            (SRC,),
+        ).fetchone()[0]
+
+
+def _seed_failed_streak(conn, ages_min) -> None:
+    for age in ages_min:
+        conn.execute(
+            "INSERT INTO ops.source_runs (source_id, status, started_at, finished_at) "
+            "VALUES (%s, 'failed', now() - make_interval(mins => %s), "
+            "        now() - make_interval(mins => %s))",
+            (SRC, age, age),
+        )
+
+
+def _seed_open_circuit(conn, *, opened_min_ago: int, cooldown: int = 60) -> None:
+    conn.execute("DELETE FROM ops.feed_health WHERE source_id = %s", (SRC,))
+    conn.execute(
+        "INSERT INTO ops.feed_health (source_id, consecutive_failures, state, "
+        "    opened_at, cooldown_minutes, last_failure_at) "
+        "VALUES (%s, 5, 'open', now() - make_interval(mins => %s), %s, "
+        "        now() - make_interval(mins => %s))",
+        (SRC, opened_min_ago, cooldown, opened_min_ago),
+    )
+
+
+def test_open_circuit_probes_at_cooldown_not_backoff(temp_source):
+    """pipeline.md §10.3: once the circuit is open, cooldown_minutes ALONE
+    paces the half-open probe. At streak 5 the exponential backoff window is
+    80 min — it must NOT veto a probe whose 60-min cooldown already elapsed
+    (otherwise cooldown_minutes is a dead tunable and dead feeds are probed
+    at up-to-6-hour spacing instead of the documented once-per-cooldown)."""
+    with get_conn() as conn:
+        # 5 consecutive failures, the last one 70 min ago: backoff (80 min)
+        # still vetoes, but the circuit opened 70 min ago with a 60-min
+        # cooldown — the probe is due.
+        _seed_failed_streak(conn, (150, 130, 110, 90, 70))
+        _seed_open_circuit(conn, opened_min_ago=70, cooldown=60)
+        jobs.enqueue_due(conn)
+    assert _queued() == 1  # the half-open probe
+    with get_conn() as conn:
+        state = conn.execute(
+            "SELECT state FROM ops.feed_health WHERE source_id = %s", (SRC,)
+        ).fetchone()[0]
+    assert state == "half_open"
+
+
+def test_open_circuit_within_cooldown_stays_skipped(temp_source):
+    with get_conn() as conn:
+        _seed_failed_streak(conn, (500, 480, 460, 440, 420))  # backoff elapsed
+        _seed_open_circuit(conn, opened_min_ago=30, cooldown=60)
+        jobs.enqueue_due(conn)
+    assert _queued() == 0  # open circuit: cooldown not elapsed, no probe
 
 
 def test_gated_streak_backoff_grows(temp_source):

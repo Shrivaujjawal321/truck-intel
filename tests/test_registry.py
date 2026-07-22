@@ -10,7 +10,7 @@ from truckintel.registry import load_registry, sync_sources
 
 EXPECTED_KEYS = {
     "id", "name", "owner", "url", "kind", "load_pattern", "schedule_minutes",
-    "license", "attribution", "slo_hours", "gates", "auth",
+    "license", "attribution", "slo_hours", "gates", "auth", "parser", "target",
 }
 
 VALID_DOC = {
@@ -32,13 +32,31 @@ def _write(tmp_path, name: str, doc: dict) -> None:
 
 def test_real_registry_loads_and_validates():
     sources = load_registry("registry")
-    assert {s["id"] for s in sources} == {"eia_diesel", "nbi_annual", "ntad_parking", "nws_alerts"}
+    # MVP spine sources must always be present; Phase-2 tracks add more
+    # (wzdx_*, nti_tunnels, ...) — subset, not equality, by design.
+    assert {"eia_diesel", "nbi_annual", "ntad_parking", "nws_alerts"} <= {
+        s["id"] for s in sources
+    }
     for s in sources:
         assert set(s) == EXPECTED_KEYS
         assert isinstance(s["gates"], dict)
     eia = next(s for s in sources if s["id"] == "eia_diesel")
     assert eia["auth"] == {"env": "EIA_API_KEY"}
     assert eia["kind"] == "api_keyed" and eia["load_pattern"] == "upsert"
+
+
+def test_required_fields_validated(tmp_path):
+    # gates.required_fields (gate-1 channel) must be a non-empty list of
+    # field-name strings; a typo is caught at sync time, not at 3 a.m.
+    for bad in ("tunnel_id", [], [1], ["ok", ""], {"f": 1}):
+        _write(tmp_path, "a.yaml",
+               {**VALID_DOC, "gates": {"required_fields": bad}})
+        with pytest.raises(ValueError, match="required_fields"):
+            load_registry(tmp_path)
+    _write(tmp_path, "a.yaml",
+           {**VALID_DOC, "gates": {"required_fields": ["event_id", "kind"]}})
+    src = load_registry(tmp_path)[0]
+    assert src["gates"]["required_fields"] == ["event_id", "kind"]
 
 
 def test_malformed_yaml_fails_loudly(tmp_path):
@@ -104,7 +122,7 @@ def test_sync_upserts_and_disables_missing_never_deletes():
         "url": "https://example.invalid/", "kind": "live_json",
         "load_pattern": "event_lifecycle", "schedule_minutes": 100000,
         "license": None, "attribution": None, "slo_hours": 100000,
-        "gates": {}, "auth": None,
+        "gates": {}, "auth": None, "parser": None, "target": None,
     }
     try:
         with get_conn() as conn:
@@ -122,8 +140,10 @@ def test_sync_upserts_and_disables_missing_never_deletes():
             row = conn.execute(
                 "SELECT enabled FROM ops.sources WHERE source_id = %s", (GHOST_ID,)
             ).fetchone()
+            # kind='derived' synthetic sources (quality_rescore) are
+            # registry-less by design and stay enabled through every sync.
             enabled_real = conn.execute(
-                "SELECT count(*) FROM ops.sources WHERE enabled"
+                "SELECT count(*) FROM ops.sources WHERE enabled AND kind != 'derived'"
             ).fetchone()[0]
         assert row == (False,)  # still resolvable for audit history
         assert enabled_real == len(real)
