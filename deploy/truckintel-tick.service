@@ -1,0 +1,10 @@
+# truck-intel: one scheduler pass — sync registry into ops.sources, enqueue due jobs.
+# Fired every minute by truckintel-tick.timer. Cheap and idempotent by design.
+[Unit]
+Description=truck-intel tick (registry sync + enqueue due jobs)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python -m truckintel.engine tick

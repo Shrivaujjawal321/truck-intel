@@ -1,0 +1,12 @@
+# Fires truckintel-tick.service every minute.
+# Persistent=false: a missed minute needs no catch-up (the next tick covers it).
+[Unit]
+Description=truck-intel tick timer (every 1 min)
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=5s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

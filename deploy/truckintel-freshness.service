@@ -1,0 +1,13 @@
+# truck-intel: freshness SLO check + status.html regeneration, every 10 min.
+# freshness_check exits 1 on SLO violations BY DESIGN — the leading '-' on its
+# ExecStart line lets status_gen still run, so the status page never goes stale
+# just because a source is late. journalctl keeps the violation lines.
+[Unit]
+Description=truck-intel freshness check + status page
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=-%h/.local/bin/uv run python scripts/freshness_check.py
+ExecStart=%h/.local/bin/uv run python scripts/status_gen.py

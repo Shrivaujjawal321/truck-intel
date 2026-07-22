@@ -1,0 +1,13 @@
+# Fires truckintel-freshness.service every 10 minutes (MASTER_PLAN §11:
+# "one 10-min timer that catches every failure class").
+# Persistent=true: after a reboot/suspend the check runs immediately if missed.
+[Unit]
+Description=truck-intel freshness timer (every 10 min)
+
+[Timer]
+OnCalendar=*:0/10
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

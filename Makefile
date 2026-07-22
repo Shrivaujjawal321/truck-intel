@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema sync ingest tick api status test
+.PHONY: db-up schema sync ingest tick api status test status-page freshness
 
 db-up:
 	./scripts/db_up.sh
@@ -26,3 +26,11 @@ status:
 
 test:
 	uv run pytest
+
+# regenerate status.html from ops.sources + ops.source_runs
+status-page:
+	uv run python scripts/status_gen.py
+
+# freshness SLO check: exit 1 on violations (same pair the 10-min timer runs)
+freshness:
+	uv run python scripts/freshness_check.py

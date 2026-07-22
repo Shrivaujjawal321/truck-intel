@@ -1,0 +1,15 @@
+# truck-intel: the queue worker — drains ops.job_queue, one job at a time (MVP).
+# Long-running; restarts on failure. All HTTP goes through polite_get() inside.
+[Unit]
+Description=truck-intel worker (fetch -> validate -> publish)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python -m truckintel.engine worker
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

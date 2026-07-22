@@ -1,0 +1,14 @@
+# truck-intel: the FastAPI /v1 surface via uvicorn on 127.0.0.1:8000.
+# Localhost-only in MVP; TLS/proxy (Caddy) is a later phase.
+[Unit]
+Description=truck-intel API (uvicorn, 127.0.0.1:8000)
+After=network-online.target docker.service
+
+[Service]
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
