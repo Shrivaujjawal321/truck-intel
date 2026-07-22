@@ -21,7 +21,8 @@ from pathlib import Path
 
 import yaml
 
-from truckintel.db import execute, fetch_all
+from truckintel.db import execute, fetch_all, get_conn
+from truckintel.engine import record_feed_health
 
 REGISTRY_DIR = Path(__file__).resolve().parents[1] / "registry"
 # Both prove the feed is alive: re-verified-unchanged data is fresh data.
@@ -34,12 +35,30 @@ STALE_RUNNING_HOURS = 2
 def reap_stale() -> None:
     """Close phantom 'running' rows a dead worker left behind: the run row is
     marked failed (audit must not lie forever) and the job re-queued so the
-    source retries without human intervention."""
-    n_runs = execute(
-        "UPDATE ops.source_runs SET status = 'failed', finished_at = now(), "
-        "message = 'reaped: stale running row (worker died mid-run)' "
-        "WHERE status = 'running' AND started_at < now() - make_interval(hours => %s)",
-        (STALE_RUNNING_HOURS,))
+    source retries without human intervention.
+
+    Every reaped run is also fed into the circuit breaker as a failure
+    (engine.record_feed_health) — a worker that repeatedly dies mid-run
+    (OOM/SIGKILL) takes exactly this path, and without the breaker seeing
+    those failures a crash-looping source would be re-hit at full tick
+    cadence forever (pipeline.md §10.3). Savepoint-guarded so a missing
+    ops.feed_health (schema_phase2 not applied) never breaks the reap."""
+    with get_conn() as conn:
+        reaped = conn.execute(
+            "UPDATE ops.source_runs SET status = 'failed', finished_at = now(), "
+            "message = 'reaped: stale running row (worker died mid-run)' "
+            "WHERE status = 'running' AND started_at < now() - make_interval(hours => %s) "
+            "RETURNING source_id",
+            (STALE_RUNNING_HOURS,)).fetchall()
+        for (source_id,) in reaped:
+            conn.execute("SAVEPOINT feed_health_hook")
+            try:
+                record_feed_health(conn, source_id, ok=False)
+            except Exception:
+                conn.execute("ROLLBACK TO SAVEPOINT feed_health_hook")
+            else:
+                conn.execute("RELEASE SAVEPOINT feed_health_hook")
+    n_runs = len(reaped)
     n_jobs = execute(
         "UPDATE ops.job_queue SET status = 'queued', started_at = NULL, "
         "message = 'reaped: stale running job' "
@@ -50,11 +69,22 @@ def reap_stale() -> None:
 
 
 def load_slos(registry_dir: Path = REGISTRY_DIR) -> dict[str, int]:
-    """source_id -> slo_hours, straight from registry/*.yaml."""
+    """source_id -> slo_hours: registry/*.yaml plus SLO-carrying DERIVED
+    sources seeded in the DB (e.g. quality_nightly, 36 h) — derived sources
+    are registry-less by design, so a silently-dead quality job must be
+    caught here too. DB unreachable is handled by the caller's check."""
     slos: dict[str, int] = {}
     for path in sorted(registry_dir.glob("*.yaml")):
         y = yaml.safe_load(path.read_text())
         slos[y["id"]] = int(y["slo_hours"])
+    try:
+        for source_id, slo_hours in fetch_all(
+            "SELECT source_id, slo_hours FROM ops.sources "
+            "WHERE kind = 'derived' AND slo_hours IS NOT NULL AND enabled"
+        ):
+            slos[source_id] = int(slo_hours)
+    except Exception:
+        pass  # registry SLOs still checked; main() reports DB-down separately
     return slos
 
 

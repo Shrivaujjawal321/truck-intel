@@ -256,6 +256,25 @@ def test_nws_parse():
     assert heat["props"]["areaDesc"].startswith("Natrona County")
 
 
+def test_nws_error_envelope_raises_never_reads_as_empty_feed():
+    # HTTP-200 JSON error/maintenance envelope: not a FeatureCollection ->
+    # raise, never an empty feed (publishing [] soft-closes every active alert).
+    raw = b'{"status": "error", "detail": "service unavailable"}'
+    with pytest.raises(ValueError, match="features"):
+        list(nws.parse(raw))
+
+
+def test_nws_features_null_raises():
+    raw = b'{"type": "FeatureCollection", "features": null}'
+    with pytest.raises(ValueError, match="not a list"):
+        list(nws.parse(raw))
+
+
+def test_nws_empty_feature_collection_is_legitimate():
+    raw = b'{"type": "FeatureCollection", "features": []}'
+    assert list(nws.parse(raw)) == []
+
+
 def test_nws_multipolygon_wkt():
     geom = {
         "type": "MultiPolygon",

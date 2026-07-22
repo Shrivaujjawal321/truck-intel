@@ -85,7 +85,12 @@ def coverage() -> dict:
             entry["last_success_age_hours"] = None
         else:
             age_h = (now - ok_at).total_seconds() / 3600
-            entry["slo_status"] = "ok" if age_h <= s["slo_hours"] else "stale"
+            # slo_hours NULL = no SLO declared (event-driven derived sources
+            # like quality_rescore) — honestly 'no_slo', never a fake ok/stale.
+            if s["slo_hours"] is None:
+                entry["slo_status"] = "no_slo"
+            else:
+                entry["slo_status"] = "ok" if age_h <= s["slo_hours"] else "stale"
             entry["last_success_at"] = ok_at
             entry["last_success_age_hours"] = round(age_h, 2)
 

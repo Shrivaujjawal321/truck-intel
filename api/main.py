@@ -8,7 +8,15 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from api import common, routes_bridges, routes_fuel, routes_live, routes_meta, routes_parking
+from api import (
+    common,
+    routes_bridges,
+    routes_fuel,
+    routes_live,
+    routes_meta,
+    routes_parking,
+    routes_tunnels,
+)
 
 app = FastAPI(
     title="truck-intel",
@@ -19,6 +27,7 @@ common.install_error_handlers(app)
 
 for _router in (
     routes_bridges.router,
+    routes_tunnels.router,
     routes_parking.router,
     routes_live.router,
     routes_fuel.router,

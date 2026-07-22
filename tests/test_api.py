@@ -277,7 +277,7 @@ def test_coverage_shape():
     assert "generated_at" in body
     assert isinstance(body["sources"], list)
     for src in body["sources"]:
-        assert src["slo_status"] in ("ok", "stale", "never_ran")
+        assert src["slo_status"] in ("ok", "stale", "never_ran", "no_slo")
         for key in ("source_id", "license", "attribution", "row_count", "vintage", "last_run"):
             assert key in src
 

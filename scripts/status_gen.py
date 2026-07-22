@@ -61,7 +61,7 @@ Run <code>make sync</code>, then <code>make ingest SOURCE=…</code>. This page 
 <span class="note">vintage: {{ s.vintage }} — {{ s.note }}</span></td>
 <td>{% if s.status %}{{ s.status }}<br><span class="note">{{ s.run_at }}</span>
 {% if s.message %}<br><span class="note">{{ s.message }}</span>{% endif %}{% else %}never ran{% endif %}</td>
-<td>{{ s.rows }}</td><td>{{ s.age }}</td><td>{{ s.slo_hours }} h</td></tr>
+<td>{{ s.rows }}</td><td>{{ s.age }}</td><td>{{ s.slo_hours }}</td></tr>
 {% endfor %}</table>{% endif %}
 <footer><p>Attributions: {% for a in attributions %}{{ a }}{{ " · " if not loop.last }}{% else %}(none synced yet){% endfor %}</p>
 <p>Advisory data from public sources — not for enforcement; obey posted signs. A NULL/missing value
@@ -107,6 +107,10 @@ def collect(conn) -> list[dict]:
         age_h = (now - ok_at).total_seconds() / 3600 if ok_at else None
         if not enabled:
             cls = "off"
+        elif slo is None:
+            # Event-driven synthetic source (schedule/SLO NULL, e.g.
+            # quality_rescore): no freshness SLO applies — honest grey.
+            cls = "off"
         elif age_h is None or age_h > slo:
             cls = "red"
         elif age_h >= 0.75 * slo:
@@ -115,7 +119,8 @@ def collect(conn) -> list[dict]:
             cls = "green"
         num = lambda v: "—" if v is None else f"{v:,}"  # noqa: E731 — tiny formatter
         out.append({
-            "source_id": sid, "name": name, "enabled": enabled, "slo_hours": slo,
+            "source_id": sid, "name": name, "enabled": enabled,
+            "slo_hours": f"{slo} h" if slo is not None else "— (event-driven)",
             "attribution": attr, "status": status, "message": msg,
             "run_at": run_at.strftime("%Y-%m-%d %H:%M UTC") if run_at else None,
             "rows": f"{num(n_in)} / {num(n_pub)} / {num(n_rej)}" if status else "—",
