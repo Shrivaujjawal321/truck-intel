@@ -1,0 +1,34 @@
+# FHWA/BTS NTAD "National Tunnel Inventory" — ArcGIS FeatureServer root,
+# live-verified 2026-07-22 (research/tunnels.md §1.2; live query returned 580
+# point features, one per tunnel record, year=2025 vintage).
+# Same host + fetch path as ntad_parking: the engine's arcgis fetcher pages
+# {url}/0/query?where=1=1&outFields=*&f=geojson into one FeatureCollection,
+# page size from layer maxRecordCount (2000 — single page today).
+# UNITS (verified live 2026-07-22 against known tunnels): SNTI G1/G2 on this
+# service are US customary FEET, not meters — Holland Tunnel G2=12.5, Lincoln
+# G2=13, Eisenhower length_g1=8,856. The parser converts feet -> INCHES
+# (min_vert_clearance_in), matching core.bridges units per plan §5.
+# HONESTY: observed_at = the record's NTI `year` field (annual inventory
+# vintage), never the download date. L10/L11/L12 are coded FLAGS only — the
+# detailed class/quantity rules live in data/curated/tunnel_rules.yaml.
+id: nti_tunnels
+name: FHWA National Tunnel Inventory (BTS NTAD FeatureServer)
+owner: Federal Highway Administration (FHWA) / Bureau of Transportation Statistics (BTS), US DOT
+url: https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Tunnel_Inventory/FeatureServer
+kind: arcgis
+load_pattern: snapshot_swap
+parser: nti                    # truckintel/parsers/nti.py (Phase-2 registry key)
+target: core.tunnels           # §5.1 allow-list (registry.SNAPSHOT_TARGETS)
+schedule_minutes: 10080        # weekly probe; change-detection skips unchanged data
+license: US public domain
+attribution: "Federal Highway Administration (FHWA) / Bureau of Transportation Statistics (BTS), US DOT"
+slo_hours: 9490                # 13 months — annual dataset (June release cycle)
+gates:
+  min_rows: 350                # dataset is ~500+ (580 live on 2026-07-22)
+  max_row_delta_pct: 10
+  geometry_valid_pct: 98       # MASTER_PLAN §11: systematic coord drift must not publish
+  required_fields: [tunnel_id, lat, lon]   # gate 1 (pipeline.md §4.1) — a record
+                               # missing its FIPS/number parses tunnel_id=null
+                               # and must be rejected, never published as a
+                               # garbage primary key
+auth: null

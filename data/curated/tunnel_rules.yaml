@@ -1,0 +1,325 @@
+# Hand-curated per-authority tunnel hazmat/height rules.
+# Source of every fact: research/tunnels.md §2 (authority pages, verified or
+# caveated 2026-07-22). ONLY rules the research documents are encoded — gaps
+# stay absent (e.g. CBBT wind rules, Zion escort fees: UNCERTAIN, not encoded).
+#
+# HONESTY:
+# - These are curated summaries of authority prose, NOT machine-read data.
+#   Each rule carries its source_url and last_reviewed date; several authority
+#   sites are bot-blocked (MTA, MDTA) so review is manual-browser only.
+# - The NTI feed carries only coded restriction FLAGS (L10/L11/L12); this file
+#   is the class/quantity detail layer referenced by core.tunnels.rules_curated_ref
+#   and embedded by the API under props.curated_rule.
+#
+# MATCHING: the API matches a core.tunnels row to a rule when the row's state
+# is in match.states AND any match.name_patterns substring (case-insensitive)
+# occurs in the tunnel name. Patterns below were checked against the live 2025
+# NTI names on 2026-07-22 (e.g. 'BHT - Baltimore Harbor Tunnel',
+# 'THOMAS P. TIP ONEILL JR TUNNEL - 93NB', 'Lincoln  Tunnel' double-space).
+# First matching rule in file order wins. State scoping matters: 'midtown'
+# alone would collide with NY 'Queens Midtown Tunnel'.
+#
+# review_cadence_months: 3 = the quarterly manual check recommended by
+# research/tunnels.md §5, backed by the Federal Register NHMRR change trigger.
+
+rules:
+  panynj_holland:
+    authority: Port Authority of New York & New Jersey (PANYNJ)
+    match:
+      states: [NJ, NY]                 # NTI carries a record on each side of the border
+      name_patterns: ["holland tunnel"]
+    rule_summary: >-
+      Hazardous materials prohibited or restricted by class with per-class
+      quantity limits under the PANYNJ traffic rules ("Green Book"); the
+      Holland Tunnel additionally has stricter vehicle dimensional limits than
+      the Lincoln Tunnel.
+    hazmat_limited: >-
+      Per-class quantity limits (research example: corrosive liquids max
+      6.5 gal / 100 lb per vehicle). Full class-by-class table lives only in
+      the source PDF — not machine-readable.
+    legal_basis: PANYNJ Traffic Rules and Regulations ("Green Book")
+    source_url: https://www.panynj.gov/content/dam/bridges-tunnels/pdfs/green-book.pdf
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      Green Book PDF is marked "Revised September 2016" — check for a newer
+      revision before relying on class/quantity specifics
+      (research/tunnels.md verification #6).
+
+  panynj_lincoln:
+    authority: Port Authority of New York & New Jersey (PANYNJ)
+    match:
+      states: [NJ, NY]
+      name_patterns: ["lincoln"]       # live NTI name has a double space: 'Lincoln  Tunnel'
+    rule_summary: >-
+      Hazardous materials prohibited or restricted by class with per-class
+      quantity limits under the PANYNJ traffic rules ("Green Book").
+    hazmat_limited: >-
+      Per-class quantity limits (research example: corrosive liquids max
+      6.5 gal / 100 lb per vehicle). Full table in the source PDF only.
+    height_limit: 13'6" at the Lincoln Tunnel
+    legal_basis: PANYNJ Traffic Rules and Regulations ("Green Book")
+    source_url: https://www.panynj.gov/content/dam/bridges-tunnels/pdfs/green-book.pdf
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      Green Book PDF is marked "Revised September 2016" — check for a newer
+      revision before relying on class/quantity specifics.
+
+  mta_queens_midtown:
+    authority: MTA Bridges & Tunnels (Triborough Bridge & Tunnel Authority)
+    match:
+      states: [NY]
+      name_patterns: ["queens midtown"]
+    rule_summary: >-
+      ALL hazardous materials prohibited in the Queens-Midtown Tunnel.
+    hazmat_banned: [all placarded hazardous materials]
+    height_limit: 12'1"
+    width_limit: 8'6"
+    source_url: https://www.mta.info/agency/bridges-and-tunnels/trucks-commercial-vehicle-information
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      mta.info returns HTTP 403 to non-browser clients — manual browser
+      review only, never crawled.
+
+  mta_hugh_carey:
+    authority: MTA Bridges & Tunnels (Triborough Bridge & Tunnel Authority)
+    match:
+      states: [NY]
+      name_patterns: ["carey"]
+    rule_summary: >-
+      ALL hazardous materials prohibited in the Hugh L. Carey
+      (Brooklyn-Battery) Tunnel.
+    hazmat_banned: [all placarded hazardous materials]
+    height_limit: 12'1"
+    source_url: https://www.mta.info/agency/bridges-and-tunnels/trucks-commercial-vehicle-information
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      mta.info returns HTTP 403 to non-browser clients — manual browser
+      review only, never crawled.
+
+  mdta_fort_mchenry:
+    authority: Maryland Transportation Authority (MDTA)
+    match:
+      states: [MD]
+      name_patterns: ["mchenry"]       # live NTI name: 'FMT - Fort McHenry Tunnel'
+    rule_summary: >-
+      Bulk gasoline, bulk flammables, explosives and radioactive materials
+      prohibited; propane limited to 10 x 10-lb containers (empty or full).
+      Alternate route I-695 west.
+    hazmat_banned: [bulk gasoline, bulk flammables, explosives, radioactive materials]
+    hazmat_limited: propane limited to 10 x 10-lb containers (empty or full)
+    alternate_route: I-695 west
+    legal_basis: COMAR 11.07.01
+    source_url: https://mdta.maryland.gov/TunnelRestrictionsAndVehiclePermits
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      mdta.maryland.gov is bot-blocked (HTTP 403 to automated fetch,
+      research/tunnels.md verification #7) — manual browser review only.
+      COMAR 11.07.01 independently verifiable at dsd.state.md.us.
+
+  mdta_baltimore_harbor:
+    authority: Maryland Transportation Authority (MDTA)
+    match:
+      states: [MD]
+      name_patterns: ["baltimore harbor"]  # live NTI name: 'BHT - Baltimore Harbor Tunnel'
+    rule_summary: >-
+      Bulk gasoline, bulk flammables, explosives and radioactive materials
+      prohibited; propane limited to 10 x 10-lb containers (empty or full).
+      Alternate route I-695 west.
+    hazmat_banned: [bulk gasoline, bulk flammables, explosives, radioactive materials]
+    hazmat_limited: propane limited to 10 x 10-lb containers (empty or full)
+    alternate_route: I-695 west
+    legal_basis: COMAR 11.07.01
+    source_url: https://mdta.maryland.gov/TunnelRestrictionsAndVehiclePermits
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      mdta.maryland.gov is bot-blocked — manual browser review only. The NTI
+      record for this tunnel codes an implausible 135 ft clearance
+      (likely 13.5); we surface the source value unfixed.
+
+  massdot_sumner:
+    authority: Massachusetts DOT (MassDOT)
+    match:
+      states: [MA]
+      name_patterns: ["sumner"]
+    rule_summary: >-
+      Placarded hazmat vehicles prohibited in all Boston harbor / Big Dig
+      tunnels; posted surface alternate routes apply.
+    hazmat_banned: [all placarded hazardous materials]
+    height_limit: 12'6"
+    legal_basis: 700 CMR 7.06 ("Limitations on Use of Ways")
+    source_url: https://www.law.cornell.edu/regulations/massachusetts/700-CMR-7-06
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+
+  massdot_callahan:
+    authority: Massachusetts DOT (MassDOT)
+    match:
+      states: [MA]
+      name_patterns: ["callahan"]
+    rule_summary: >-
+      Placarded hazmat vehicles prohibited in all Boston harbor / Big Dig
+      tunnels; posted surface alternate routes apply.
+    hazmat_banned: [all placarded hazardous materials]
+    height_limit: 12'6"
+    legal_basis: 700 CMR 7.06 ("Limitations on Use of Ways")
+    source_url: https://www.law.cornell.edu/regulations/massachusetts/700-CMR-7-06
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+
+  massdot_ted_williams:
+    authority: Massachusetts DOT (MassDOT)
+    match:
+      states: [MA]
+      name_patterns: ["ted williams"]
+    rule_summary: >-
+      Placarded hazmat vehicles prohibited in all Boston harbor / Big Dig
+      tunnels; posted surface alternate routes apply.
+    hazmat_banned: [all placarded hazardous materials]
+    height_limit: 13'6"
+    legal_basis: 700 CMR 7.06 ("Limitations on Use of Ways")
+    source_url: https://www.law.cornell.edu/regulations/massachusetts/700-CMR-7-06
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+
+  massdot_oneill:
+    authority: Massachusetts DOT (MassDOT)
+    match:
+      states: [MA]
+      name_patterns: ["oneill", "o'neill"]  # live NTI: 'THOMAS P. TIP ONEILL JR TUNNEL - 93NB/SB'
+    rule_summary: >-
+      Placarded hazmat vehicles prohibited in all Boston harbor / Big Dig
+      tunnels (Tip O'Neill / I-93); posted surface alternate routes apply.
+    hazmat_banned: [all placarded hazardous materials]
+    legal_basis: 700 CMR 7.06 ("Limitations on Use of Ways")
+    source_url: https://www.law.cornell.edu/regulations/massachusetts/700-CMR-7-06
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+
+  vdot_hrbt:
+    authority: Virginia DOT (VDOT)
+    match:
+      states: [VA]
+      name_patterns: ["hampton roads"]
+    rule_summary: >-
+      Hampton Roads Bridge-Tunnel (I-64): westbound 13'6" max height
+      (eastbound 14'6"). Hazmat classes 1.1/1.2/1.3/2.3/4.3/6.1 prohibited at
+      VDOT tunnels; other classes non-bulk quantities only.
+    hazmat_banned: ["1.1", "1.2", "1.3", "2.3", "4.3", "6.1"]
+    hazmat_limited: other hazmat classes non-bulk quantities only
+    height_limit: 13'6" westbound (14'6" eastbound)
+    legal_basis: CTB tunnel hazmat regulation
+    source_url: https://www.vdot.virginia.gov/travel-traffic/freight/truck-restrictions/
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      The class list comes from the CTB regulation PDF
+      (https://ctb.virginia.gov/media/ctb/agendas-and-meeting-minutes/2011/mar/resol/Agenda_Item_6_Tunnels_HazMat_Regulation_-_Updated_Text.pdf),
+      which the adversarial verification pass did NOT confirm this session
+      (research/tunnels.md verification #8) — re-verify at next manual review.
+
+  vdot_midtown:
+    authority: Virginia DOT (VDOT)
+    match:
+      states: [VA]                     # state scoping keeps NY 'Queens Midtown' out
+      name_patterns: ["midtown"]
+    rule_summary: >-
+      Midtown Tunnel (US-58): 13'6" max height. Hazmat classes
+      1.1/1.2/1.3/2.3/4.3/6.1 prohibited at VDOT tunnels; other classes
+      non-bulk quantities only.
+    hazmat_banned: ["1.1", "1.2", "1.3", "2.3", "4.3", "6.1"]
+    hazmat_limited: other hazmat classes non-bulk quantities only
+    height_limit: 13'6"
+    legal_basis: CTB tunnel hazmat regulation
+    source_url: https://www.vdot.virginia.gov/travel-traffic/freight/truck-restrictions/
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      Class list from the CTB regulation PDF — not confirmed by the
+      verification pass this session; re-verify at next manual review.
+
+  vdot_downtown:
+    authority: Virginia DOT (VDOT)
+    match:
+      states: [VA]
+      name_patterns: ["downtown"]
+    rule_summary: >-
+      Downtown Tunnel (I-264): 13'6" max height; westbound width limited to
+      8' for tractor-trailers. Hazmat classes 1.1/1.2/1.3/2.3/4.3/6.1
+      prohibited at VDOT tunnels; other classes non-bulk quantities only.
+    hazmat_banned: ["1.1", "1.2", "1.3", "2.3", "4.3", "6.1"]
+    hazmat_limited: other hazmat classes non-bulk quantities only
+    height_limit: 13'6"
+    width_limit: 8' westbound for tractor-trailers
+    legal_basis: CTB tunnel hazmat regulation
+    source_url: https://www.vdot.virginia.gov/travel-traffic/freight/truck-restrictions/
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      Class list from the CTB regulation PDF — not confirmed by the
+      verification pass this session; re-verify at next manual review.
+
+  vdot_monitor_merrimac:
+    authority: Virginia DOT (VDOT)
+    match:
+      states: [VA]
+      name_patterns: ["monitor merrimac"]
+    rule_summary: >-
+      Monitor-Merrimac Memorial Bridge-Tunnel (I-664): hazmat classes
+      1.1/1.2/1.3/2.3/4.3/6.1 prohibited at VDOT tunnels; other classes
+      non-bulk quantities only.
+    hazmat_banned: ["1.1", "1.2", "1.3", "2.3", "4.3", "6.1"]
+    hazmat_limited: other hazmat classes non-bulk quantities only
+    legal_basis: CTB tunnel hazmat regulation
+    source_url: https://www.vdot.virginia.gov/travel-traffic/freight/truck-restrictions/
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      Class list from the CTB regulation PDF — not confirmed by the
+      verification pass this session; re-verify at next manual review.
+
+  cdot_ejmt:
+    authority: Colorado DOT (CDOT)
+    match:
+      states: [CO]                     # state scoping keeps SD 'Scovel Johnson' and MI 'Holland Airport' out
+      name_patterns: ["eisenhower", "johnson"]
+    rule_summary: >-
+      Hazmat prohibited through the Eisenhower-Johnson Memorial Tunnels
+      (I-70); hazmat traffic must use US-6 Loveland Pass. When the pass
+      closes in winter, CDOT runs escorted hazmat convoys through the tunnel
+      (~hourly).
+    hazmat_banned: [all hazardous materials (unescorted)]
+    escort: escorted hazmat convoys ~hourly when Loveland Pass is closed
+    alternate_route: US-6 Loveland Pass
+    source_url: https://www.codot.gov/travel/ejmt/metering
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3
+    notes: >-
+      The pass-open/pass-closed conditional cannot be captured statically —
+      real-time state lives in CDOT/COtrip feeds (live-ops category).
+      Detailed prohibited-materials list in Colorado hazmat rules (CCR).
+
+  paturnpike_tunnels:
+    authority: Pennsylvania Turnpike Commission (PTC)
+    match:
+      states: [PA]
+      name_patterns: ["allegheny", "tuscarora", "kittatinny", "blue mountain", "lehigh"]
+    rule_summary: >-
+      Table 1 materials and all explosives prohibited in the five turnpike
+      tunnels; Table 2 classes (flammable gas/liquid/solid, oxidizer, organic
+      peroxide, poison, corrosive) allowed non-bulk only (<=119 gal liquid /
+      <=882 lb solid / <=1,000 lb water-capacity gas).
+    hazmat_banned: [Table 1 materials, all explosives]
+    hazmat_limited: >-
+      Table 2 (flammable gas/liquid/solid, oxidizer, organic peroxide,
+      poison, corrosive) non-bulk only: <=119 gal liquid, <=882 lb solid,
+      <=1,000 lb water-capacity gas
+    legal_basis: 67 Pa. Code § 601.5
+    source_url: https://www.paturnpike.com/commercial/permits-restrictions/hazardous-materials-(placarded-loads)
+    last_reviewed: "2026-07-22"
+    review_cadence_months: 3

@@ -1,0 +1,101 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 1,
+      "geometry": {"type": "Point", "coordinates": [-74.021, 40.728]},
+      "properties": {
+        "OBJECTID": 1,
+        "tunnel_number_i1": "3800B02",
+        "tunnel_name_i2": "Holland Tunnel",
+        "state_code_i3": "34",
+        "year": 2025,
+        "portal_latitude_i13": 40.728,
+        "portal_longitude_i14": -74.021,
+        "facility_carried_i10": "I-78",
+        "tunnel_length_g1": 8556,
+        "min_vert_clearance_over_tunnel_": 12.5,
+        "height_restriction_l10": 1,
+        "hazardous_material_restriction_": 1,
+        "other_restrictions_l12": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 2,
+      "geometry": {"type": "Point", "coordinates": [-78.55, 40.05]},
+      "properties": {
+        "OBJECTID": 2,
+        "tunnel_number_i1": "000000000052443",
+        "tunnel_name_i2": "Allegheny Tunnel WB",
+        "state_code_i3": "42",
+        "year": 2025,
+        "portal_latitude_i13": 40.05,
+        "portal_longitude_i14": -78.55,
+        "tunnel_length_g1": 6070,
+        "min_vert_clearance_over_tunnel_": 16.3,
+        "height_restriction_l10": 0,
+        "hazardous_material_restriction_": 0,
+        "other_restrictions_l12": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 3,
+      "geometry": {"type": "Point", "coordinates": [-121.5, 38.6]},
+      "properties": {
+        "OBJECTID": 3,
+        "tunnel_number_i1": "TESTBORE01",
+        "tunnel_name_i2": "Unknown Bore",
+        "state_code_i3": "06",
+        "year": null,
+        "portal_latitude_i13": 38.6,
+        "portal_longitude_i14": -121.5,
+        "tunnel_length_g1": null,
+        "min_vert_clearance_over_tunnel_": null,
+        "height_restriction_l10": null,
+        "hazardous_material_restriction_": null,
+        "other_restrictions_l12": null
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4,
+      "geometry": null,
+      "properties": {
+        "OBJECTID": 4,
+        "tunnel_number_i1": "F-13-Y",
+        "tunnel_name_i2": "Eisenhower Tunnel",
+        "state_code_i3": "08",
+        "year": 2025,
+        "portal_latitude_i13": 39.6795,
+        "portal_longitude_i14": -105.921,
+        "tunnel_length_g1": 8856,
+        "min_vert_clearance_over_tunnel_roadway_g2": 14.6,
+        "height_restriction_l10": 1,
+        "hazardous_material_restriction_l11": 1,
+        "other_restrictions_l12": 0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 5,
+      "geometry": {"type": "Point", "coordinates": [0, 0]},
+      "properties": {
+        "OBJECTID": 5,
+        "tunnel_number_i1": "BADCOORD01",
+        "tunnel_name_i2": "Null Island Tunnel",
+        "state_code_i3": "01",
+        "year": 2025,
+        "portal_latitude_i13": 0,
+        "portal_longitude_i14": 0,
+        "tunnel_length_g1": 100,
+        "min_vert_clearance_over_tunnel_": 14.0,
+        "height_restriction_l10": 0,
+        "hazardous_material_restriction_": 0,
+        "other_restrictions_l12": 0
+      }
+    }
+  ]
+}
