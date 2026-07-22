@@ -1,0 +1,14 @@
+# Fires truckintel-quality.service daily at 03:30 (quality-ai.md §11: one
+# nightly job, no new stateful services).
+# Persistent=true: after a reboot/suspend the rescore runs immediately if
+# missed — a skipped night must not silently age every confidence score.
+[Unit]
+Description=truck-intel quality nightly timer (daily 03:30)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+AccuracySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

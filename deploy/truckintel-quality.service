@@ -1,0 +1,15 @@
+# truck-intel: nightly quality ladder — gate-4 consistency checks + gate-5
+# confidence rescore (bridges, tunnels, parking, active live events), audited
+# under synthetic source 'quality_nightly' (36 h SLO, MASTER_PLAN §7).
+# The second ExecStart drains queued post-swap 'quality_rescore' derived jobs
+# (engine.enqueue_rescore) — leading '-' so a drain hiccup never masks the
+# nightly result; the run rows carry the truth either way.
+[Unit]
+Description=truck-intel nightly quality ladder (gates 4-5 + confidence rescore)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python scripts/quality_nightly.py
+ExecStart=-%h/.local/bin/uv run python scripts/quality_nightly.py --claim-jobs
