@@ -68,10 +68,14 @@ def _point_wkt(location: dict) -> str | None:
     unparseable, null-island, or outside the US -> None: a junk coordinate is
     DROPPED (geometry never invented), never published as a real location.
 
-    The honesty guard lives HERE, at the point geometry is created, on purpose:
-    gate2_coords validates only rows carrying 'lat'/'lon' keys, so a geom_wkt
-    row would otherwise bypass every coordinate check (null-island sensor
-    defaults, out-of-US geocoding errors) and publish invented geometry."""
+    The guard lives HERE, at the point geometry is created, on purpose: a
+    junk coordinate means this record has no known location, so the honest
+    result is a chain-control row with geometry NULL — not a rejected row.
+    gate2_coords now also validates geom_wkt (it did not when this parser
+    landed, which is how null-island geometry once reached core), so a junk
+    coordinate that slipped past here would be rejected outright rather than
+    published; dropping it to None keeps the advisory and loses only the
+    unknown position."""
     try:
         lon = float(location.get("longitude"))
         lat = float(location.get("latitude"))

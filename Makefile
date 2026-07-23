@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 schema-wave2 sync ingest tick api status test status-page freshness weekly-digest
+.PHONY: db-up schema schema-phase2 schema-wave2 sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume
 
 db-up:
 	./scripts/db_up.sh
@@ -46,3 +46,14 @@ freshness:
 # weekly digest: 7-day ops rollup -> status_weekly.md (+ --deliver to send)
 weekly-digest:
 	uv run python scripts/weekly_digest.py --days 7
+
+# OSM highways -> osm.ways. The US PBF pass runs 3-4 h: ALWAYS keep the
+# workdir, so a load-time failure replays in minutes instead of re-scanning.
+osm-ways:
+	uv run python scripts/osm_ways_job.py --pbf $(PBF) --keep-workdir
+
+# Replay phase B alone from a kept workdir (see the disk-headroom error text):
+#   make osm-ways-resume PBF=data/pbf/us-latest.osm.pbf \
+#        WORKDIR=data/pbf/.osmways-work-us-latest.osm-run1238
+osm-ways-resume:
+	uv run python scripts/osm_ways_job.py --pbf $(PBF) --from-spool $(WORKDIR)

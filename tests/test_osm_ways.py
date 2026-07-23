@@ -344,3 +344,121 @@ def test_delaware_full_run(delaware_scratch):
         assert len(checked) >= 10             # DE tags plenty of bridges
         for stored, raw in checked:
             assert float(stored) == owj.parse_length_in(raw)
+
+
+# ------------------------------------- phase-B replay + disk headroom guard
+#
+# Regression cover for the 2026-07-23 US incident: a clean 3.4 h osmium pass
+# was lost when COPY hit DiskFull mid-load and the failure path rmtree'd the
+# workdir. The guard refuses the swap up front; --from-spool replays phase B
+# from a kept workdir; and a resumed run never deletes a spool it was handed.
+
+def test_resolve_spool_accepts_workdir_or_file(tmp_path):
+    workdir = tmp_path / ".osmways-work-x-run1"
+    workdir.mkdir()
+    spool = workdir / owj.SPOOL_NAME
+    spool.write_bytes(b"")
+    assert owj.resolve_spool(workdir) == spool     # a workdir
+    assert owj.resolve_spool(spool) == spool       # or the spool itself
+
+
+def test_resolve_spool_missing_raises_loudly(tmp_path):
+    # A mistyped resume path must fail, never silently redo the 3-4 h pass.
+    with pytest.raises(FileNotFoundError, match="no phase-A spool"):
+        owj.resolve_spool(tmp_path / "nope")
+
+
+def test_count_spool_lines(tmp_path):
+    import gzip
+    import json as _json
+    spool = tmp_path / owj.SPOOL_NAME
+    with gzip.open(spool, "wt", encoding="utf-8") as fh:
+        for way_id in range(7):
+            fh.write(_json.dumps({"way_id": way_id}) + "\n")
+    assert owj._count_spool_lines(spool) == 7
+
+
+def test_headroom_guard_raises_when_volume_too_small(tmp_path, monkeypatch):
+    spool = tmp_path / owj.SPOOL_NAME
+    spool.write_bytes(b"x" * 1_000_000)
+    monkeypatch.setenv(owj._DB_VOLUME_ENV, str(tmp_path))
+    monkeypatch.setattr(owj, "_free_bytes", lambda _p: 5_000_000)
+    with pytest.raises(owj.InsufficientDiskSpace) as exc:
+        owj.check_load_headroom(spool, factor=12.0)
+    # The message must carry the actionable replay command, not just a number.
+    assert "--from-spool" in str(exc.value)
+    assert str(tmp_path) in str(exc.value)
+
+
+def test_headroom_guard_passes_with_room(tmp_path, monkeypatch):
+    spool = tmp_path / owj.SPOOL_NAME
+    spool.write_bytes(b"x" * 1_000_000)
+    monkeypatch.setenv(owj._DB_VOLUME_ENV, str(tmp_path))
+    monkeypatch.setattr(owj, "_free_bytes", lambda _p: 100_000_000)
+    diag = owj.check_load_headroom(spool, factor=12.0)
+    assert diag["checked"] is True
+    assert diag["needed"] == 12_000_000
+
+
+def test_headroom_guard_skip_is_explicit_not_silent(tmp_path, monkeypatch,
+                                                    capsys):
+    spool = tmp_path / owj.SPOOL_NAME
+    spool.write_bytes(b"x" * 1000)
+    monkeypatch.setenv(owj._DB_VOLUME_ENV, "")     # opt out
+    diag = owj.check_load_headroom(spool)
+    assert diag["checked"] is False
+    assert "SKIPPED" in capsys.readouterr().out    # never silent
+
+
+def test_headroom_factor_env_override(tmp_path, monkeypatch):
+    spool = tmp_path / owj.SPOOL_NAME
+    spool.write_bytes(b"x" * 1_000_000)
+    monkeypatch.setenv(owj._DB_VOLUME_ENV, str(tmp_path))
+    monkeypatch.setenv("TRUCKINTEL_LOAD_SIZE_FACTOR", "2")
+    monkeypatch.setattr(owj, "_free_bytes", lambda _p: 3_000_000)
+    assert owj.check_load_headroom(spool)["needed"] == 2_000_000  # 12x would fail
+
+
+def test_cleanup_never_deletes_a_handed_in_spool(tmp_path):
+    workdir = tmp_path / ".osmways-work-x-run1"
+    workdir.mkdir()
+    (workdir / owj.SPOOL_NAME).write_bytes(b"kept")
+    # resumed=True + keep_workdir=False: the destructive default must not apply
+    owj._cleanup_workdir(workdir, keep_workdir=False, resumed=True)
+    assert workdir.exists()
+    # a run that created its own workdir still cleans up
+    owj._cleanup_workdir(workdir, keep_workdir=False, resumed=False)
+    assert not workdir.exists()
+
+
+@needs_db
+def test_from_spool_replays_phase_b_without_rescanning(mini_scratch, tmp_path):
+    pbf = tmp_path / "mini.osm.pbf"
+    _write_mini_pbf(pbf)
+    first = owj.run_ways_job(pbf, f"{MINI_SCHEMA}.ways", progress_every=0,
+                             keep_workdir=True)
+    mini_scratch.append(first["run_id"])
+    workdir = pbf.parent / f".osmways-work-{pbf.stem}-run{first['run_id']}"
+    assert (workdir / owj.SPOOL_NAME).is_file()   # kept for the replay
+
+    resumed = owj.run_ways_job(pbf, f"{MINI_SCHEMA}.ways", progress_every=0,
+                               from_spool=workdir)
+    mini_scratch.append(resumed["run_id"])
+
+    assert resumed["published"] == first["published"]
+    assert resumed["resumed_from"] == str(workdir / owj.SPOOL_NAME)
+    # Phase A counters are unknowable from a spool -> None, never faked as 0.
+    assert resumed["scanned"] is None
+    assert resumed["skipped_class"] is None
+    assert resumed["pass_seconds"] is None
+    # The handed-in spool survives even though keep_workdir defaulted False.
+    assert (workdir / owj.SPOOL_NAME).is_file()
+
+    with get_conn() as conn:
+        lineage = conn.execute(
+            f"SELECT DISTINCT run_id FROM {MINI_SCHEMA}.ways").fetchall()
+        msg = conn.execute(
+            "SELECT message FROM ops.source_runs WHERE run_id = %s",
+            (resumed["run_id"],)).fetchone()[0]
+    assert lineage == [(resumed["run_id"],)]      # replay owns the snapshot
+    assert "resumed=" in msg                      # audit row says so

@@ -25,10 +25,21 @@ wall-clock for pass + COPY + index build: run it in the background
 
 Two phases per run (one audited ops.source_runs row under source 'osm_ways'):
   A. osmium pass: FileProcessor(NODE|WAY) + disk location index + KeyFilter on
-     'highway' -> allow-listed classes only -> spool file. Long but resumable
-     by re-running; progress printed every `progress_every` kept ways.
-  B. snapshot_swap into the target: short transaction, atomic replace; a
-     failed load never touches the live table.
+     'highway' -> allow-listed classes only -> spool file. Long; progress
+     printed every `progress_every` kept ways.
+  B. disk-headroom guard, then snapshot_swap into the target: short
+     transaction, atomic replace; a failed load never touches the live table.
+
+Phase B is separately replayable. The 2026-07-23 US run lost a clean 3.4 h
+pass when COPY hit `DiskFull` and the failure path deleted the workdir, so:
+run long passes with --keep-workdir, and if the load fails, free space and
+replay phase B alone in minutes:
+
+  scripts/osm_ways_job.py --pbf data/pbf/us-latest.osm.pbf \
+      --from-spool data/pbf/.osmways-work-us-latest.osm-run<id>
+
+check_load_headroom() refuses the swap up front when the DB volume cannot
+plausibly hold heap+indexes+WAL (~12x the gzip spool, measured on Delaware).
 
 observed_at honesty: the PBF's osmosis_replication_timestamp header (the
 Geofabrik replication point — the data's real-world vintage), NEVER the load
@@ -52,6 +63,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import re
 import resource
 import shutil
@@ -406,30 +418,186 @@ def _peak_rss_mb() -> int:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
 
 
+# ---------------------------------------------------------------------------
+# Disk headroom guard (phase B pre-flight)
+# ---------------------------------------------------------------------------
+#
+# Why this exists: the 2026-07-23 US run spent 3.4 h on a clean phase-A pass
+# and then died inside COPY with `DiskFull: could not write block ... in file
+# base/16384/711635` at spool line 906,282 — the whole pass wasted, because a
+# failed run also rmtree'd the workdir. Two defences, both here:
+#   1. this guard fails BEFORE the swap with an actionable message, and
+#   2. --from-spool (below) replays phase B from a kept workdir in minutes.
+#
+# Sizing basis (Delaware, measured 2026-07-22): 9.79 MB gzip spool ->
+# 50 MB total relation size (heap 42 MB + indexes) = 5.4x. COPY into the
+# ways_new clone also writes roughly heap-sized WAL before commit (~4.3x), so
+# peak transient demand is ~10x the gzip spool. _LOAD_BYTES_PER_SPOOL_BYTE
+# carries a margin over that; override via TRUCKINTEL_LOAD_SIZE_FACTOR when a
+# different tag mix (denser props) shifts the ratio.
+_LOAD_BYTES_PER_SPOOL_BYTE = 12.0
+
+# Which filesystem the guard measures. Postgres runs in Docker in the default
+# single-box deployment, so its heap+WAL land on the docker root volume, NOT
+# on the workdir volume. They are the same filesystem on the reference box;
+# where they are not (or where Postgres is remote), set this to the DB's data
+# volume, or to "" to skip the check with a printed note. Never silent.
+_DB_VOLUME_ENV = "TRUCKINTEL_DB_VOLUME_PATH"
+_DEFAULT_DB_VOLUME = "/var/lib/docker"
+
+
+class InsufficientDiskSpace(RuntimeError):
+    """Phase B would very likely exhaust the DB volume — refuse before the swap."""
+
+
+def _free_bytes(path: Path) -> int | None:
+    """Free bytes on the filesystem holding `path`, or None if unmeasurable.
+
+    Walks up to the nearest existing ancestor so a not-yet-created workdir
+    still measures its intended volume."""
+    probe = path if path.exists() else next(
+        (p for p in path.parents if p.exists()), None)
+    if probe is None:
+        return None
+    try:
+        return shutil.disk_usage(probe).free
+    except OSError:
+        return None
+
+
+def _db_volume_path() -> Path | None:
+    """The filesystem to measure for phase B, or None when the check is
+    explicitly disabled (env set to empty) or the path does not exist."""
+    raw = os.environ.get(_DB_VOLUME_ENV, _DEFAULT_DB_VOLUME)
+    if not raw.strip():
+        return None
+    path = Path(raw)
+    return path if path.exists() else None
+
+
+def check_load_headroom(spool_path: Path, *,
+                        factor: float | None = None) -> dict:
+    """Refuse phase B when the DB volume cannot plausibly hold the load.
+
+    Returns a diagnostics dict (always — also on the skip paths, flagged via
+    `checked`). Raises InsufficientDiskSpace when free space is short.
+    """
+    if factor is None:
+        factor = float(os.environ.get("TRUCKINTEL_LOAD_SIZE_FACTOR",
+                                      _LOAD_BYTES_PER_SPOOL_BYTE))
+    spool_bytes = spool_path.stat().st_size
+    needed = int(spool_bytes * factor)
+    volume = _db_volume_path()
+    if volume is None:
+        print(f"osm_ways: disk headroom check SKIPPED "
+              f"({_DB_VOLUME_ENV} unset-to-empty or path missing); "
+              f"phase B would want ~{needed / 2**30:,.1f} GiB", flush=True)
+        return {"checked": False, "spool_bytes": spool_bytes, "needed": needed}
+    free = _free_bytes(volume)
+    if free is None:
+        print(f"osm_ways: disk headroom check SKIPPED (cannot stat {volume})",
+              flush=True)
+        return {"checked": False, "spool_bytes": spool_bytes, "needed": needed}
+    diag = {"checked": True, "spool_bytes": spool_bytes, "needed": needed,
+            "free": free, "volume": str(volume), "factor": factor}
+    if free < needed:
+        raise InsufficientDiskSpace(
+            f"phase B needs ~{needed / 2**30:,.1f} GiB on {volume} "
+            f"(gzip spool {spool_bytes / 2**30:,.1f} GiB x {factor:g} for "
+            f"heap+indexes+WAL) but only {free / 2**30:,.1f} GiB is free. "
+            f"The pass output is preserved at {spool_path} — free space, then "
+            f"replay phase B alone with: "
+            f"scripts/osm_ways_job.py --from-spool {spool_path.parent} "
+            f"--pbf <same pbf>. Override the estimate with "
+            f"TRUCKINTEL_LOAD_SIZE_FACTOR, or set {_DB_VOLUME_ENV}= (empty) "
+            f"to skip this check."
+        )
+    print(f"osm_ways: disk headroom OK — {free / 2**30:,.1f} GiB free on "
+          f"{volume}, phase B wants ~{needed / 2**30:,.1f} GiB", flush=True)
+    return diag
+
+
+SPOOL_NAME = "ways.ndjson.gz"
+
+
+def resolve_spool(from_spool: str | Path) -> Path:
+    """Accept either a workdir or the spool file itself -> the spool file.
+
+    Raises FileNotFoundError with the candidates tried, so a mistyped resume
+    path fails loudly instead of silently re-running the 3-4 h pass.
+    """
+    candidate = Path(from_spool)
+    if candidate.is_file():
+        return candidate
+    nested = candidate / SPOOL_NAME
+    if nested.is_file():
+        return nested
+    raise FileNotFoundError(
+        f"no phase-A spool at {candidate} (tried it as a file and as "
+        f"{nested}). Kept workdirs look like "
+        f"data/pbf/.osmways-work-<pbf-stem>-run<id>/")
+
+
+def _count_spool_lines(spool_path: Path) -> int:
+    """Rows in a kept spool (gzip scan, no JSON parse).
+
+    Deliberately NOT called on the resume path: a US spool is multiple GB, and
+    counting it would double the read IO purely to enrich one log line, when
+    snapshot_swap already returns the authoritative published count. Kept
+    because it is the honest way to inspect a spool by hand."""
+    total = 0
+    with gzip.open(spool_path, "rb") as spool:
+        for _ in spool:
+            total += 1
+    return total
+
+
 def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
                  target: str = DEFAULT_TARGET, *,
                  keep_workdir: bool = False,
                  progress_every: int = 500_000,
-                 index_path: Path | None = None) -> dict:
+                 index_path: Path | None = None,
+                 from_spool: str | Path | None = None) -> dict:
     """Extract + load one PBF into `target` under ONE audited source run.
 
     Contract for scripts/osm_extract.py (--job ways): call exactly this.
     Returns a summary dict; raises on failure (the run row records it first).
+
+    `from_spool` skips phase A and replays phase B from a kept workdir (see
+    --keep-workdir). `pbf_path` is still required and still read — for its
+    replication-timestamp header only — so a resumed load carries the same
+    honest observed_at as the pass that produced the spool. A resumed run gets
+    its own audited ops.source_runs row, marked `resumed=` in the message;
+    scanned/skipped counters are unknowable from a spool and stay None rather
+    than being fabricated as zero.
     """
     load_dotenv()
     pbf = Path(pbf_path)
     if not pbf.is_file():
         raise FileNotFoundError(f"PBF not found: {pbf}")
+    resumed_spool = resolve_spool(from_spool) if from_spool is not None else None
     run_id = _start_run()
     # workdir sits next to the PBF (data/pbf/ volume) per the hardware budget:
     # the node index + spool are disk-based, never RAM. Suffixed with the
     # run_id so concurrent runs on the same PBF (parallel test sessions,
     # overlapping dispatches) can never rmtree each other's files.
-    workdir = pbf.parent / f".osmways-work-{pbf.stem}-run{run_id}"
+    workdir = (resumed_spool.parent if resumed_spool is not None
+               else pbf.parent / f".osmways-work-{pbf.stem}-run{run_id}")
     try:
         observed_at = replication_timestamp(pbf)
-        stats = _spool_ways(pbf, workdir, progress_every=progress_every,
-                            index_path=index_path)
+        if resumed_spool is not None:
+            size_gib = resumed_spool.stat().st_size / 2**30
+            print(f"osm_ways: resuming phase B from {resumed_spool} "
+                  f"({size_gib:,.2f} GiB gzip spool) — phase A skipped",
+                  flush=True)
+            stats = {"spool": resumed_spool, "scanned": None, "kept": None,
+                     "skipped_geom": None, "skipped_class": None,
+                     "pass_seconds": None}
+        else:
+            stats = _spool_ways(pbf, workdir, progress_every=progress_every,
+                                index_path=index_path)
+        # Fail before the swap, not 900k rows into COPY (2026-07-23 incident).
+        check_load_headroom(stats["spool"])
         with get_conn() as conn:  # one short transaction: DDL guard + atomic swap
             ensure_ways_columns(conn, target)
             published = snapshot_swap(
@@ -439,8 +607,8 @@ def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
     except BaseException as exc:
         _finish_run(run_id, "failed",
                     message=(str(exc) or type(exc).__name__)[:1000])
-        if not keep_workdir:
-            shutil.rmtree(workdir, ignore_errors=True)
+        _cleanup_workdir(workdir, keep_workdir=keep_workdir,
+                         resumed=resumed_spool is not None)
         raise
     summary = {
         "run_id": run_id,
@@ -452,7 +620,13 @@ def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
         "observed_at": observed_at,
         "pass_seconds": stats["pass_seconds"],
         "peak_rss_mb": _peak_rss_mb(),
+        "resumed_from": str(resumed_spool) if resumed_spool else None,
     }
+    # A resumed run cannot know phase A's counters; '?' says so rather than
+    # printing a fabricated 0.
+    def _n(value: int | None) -> str:
+        return f"{value:,}" if value is not None else "?"
+
     _finish_run(
         run_id, "success",
         message=(
@@ -462,15 +636,33 @@ def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
             f"skipped_class={stats['skipped_class']} "
             f"skipped_geom={stats['skipped_geom']} "
             f"pass_s={stats['pass_seconds']} peak_rss_mb={summary['peak_rss_mb']}"
+            + (f" resumed={resumed_spool}" if resumed_spool else "")
         ),
         rows_published=published,
     )
-    if not keep_workdir:
-        shutil.rmtree(workdir, ignore_errors=True)
+    _cleanup_workdir(workdir, keep_workdir=keep_workdir,
+                     resumed=resumed_spool is not None)
     print(f"osm_ways run {run_id}: published {published:,} ways -> {target} "
-          f"(scanned {stats['scanned']:,}, pass {stats['pass_seconds']}s, "
+          f"(scanned {_n(stats['scanned'])}, pass {stats['pass_seconds']}s, "
           f"peak RSS {summary['peak_rss_mb']} MB)")
     return summary
+
+
+def _cleanup_workdir(workdir: Path, *, keep_workdir: bool,
+                     resumed: bool) -> None:
+    """Drop the workdir only when this run created it and was not asked to
+    keep it. A --from-spool run never deletes the workdir it was handed: that
+    spool is someone else's preserved 3-4 h pass, and deleting it on a
+    transient load failure is exactly the loss this resume path exists to
+    prevent."""
+    if resumed:
+        if not keep_workdir:
+            print(f"osm_ways: keeping handed-in workdir {workdir} "
+                  f"(--from-spool never deletes a spool it did not create)",
+                  flush=True)
+        return
+    if not keep_workdir:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def run_ways(pbf: str | Path, *, node_cache: Path | None = None,
@@ -499,9 +691,15 @@ def main() -> int:
                         help="schema-qualified target table (default osm.ways)")
     parser.add_argument("--keep-workdir", action="store_true",
                         help="keep the node index + spool for a fast re-run")
+    parser.add_argument(
+        "--from-spool", metavar="WORKDIR_OR_SPOOL",
+        help="skip the osmium pass and load an existing kept spool "
+             "(a .osmways-work-* dir or its ways.ndjson.gz). --pbf is still "
+             "read, for its replication-timestamp header only.")
     args = parser.parse_args()
     try:
-        run_ways_job(args.pbf, args.target, keep_workdir=args.keep_workdir)
+        run_ways_job(args.pbf, args.target, keep_workdir=args.keep_workdir,
+                     from_spool=args.from_spool)
     except BaseException as exc:
         print(f"osm_ways run failed: {type(exc).__name__}: {exc}",
               file=sys.stderr)
