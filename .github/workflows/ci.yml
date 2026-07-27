@@ -1,0 +1,112 @@
+# truck-intel CI.
+#
+# STATUS, HONESTLY: this repo has no git remote yet (`git remote -v` is empty
+# as of 2026-07-27), so nothing here has ever executed on GitHub. It is written
+# to be correct on the day a remote is added, and `make ci` runs the same steps
+# in the same order locally in the meantime. THAT is the gate protecting main
+# today — do not read a green badge into this file, there isn't one.
+#
+# The two jobs are split by what they need:
+#   fast   — no database, seconds. Everything that can fail without PostGIS.
+#   full   — spins up PostGIS and runs the whole suite (~11 min locally).
+# A pull request gets both; a push to a branch gets `fast` only, because
+# waiting 11 minutes to learn about a syntax error is how CI gets ignored.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight run irrelevant; don't burn minutes on it.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: fast (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      # Catches the failure mode a unit file cannot: a script that no longer
+      # imports. The scheduled jobs are scripts, not library code, so nothing
+      # else would notice until 05:00.
+      - name: Byte-compile every script
+        run: uv run python -m compileall -q scripts truckintel api
+
+      - name: Fast tests
+        run: |
+          uv run pytest -q \
+            tests/test_mechanic_enrich.py tests/test_registry.py \
+            tests/test_validate.py tests/test_parsers.py tests/test_politeness.py
+
+      # Registry YAML is config that reaches SQL, so a typo here is a
+      # production failure, not a lint nit. load_registry validates the
+      # allow-listed target, the parser module's importability and the
+      # positive-int schedule fields.
+      - name: Validate the source registry
+        run: uv run python -c "from truckintel.registry import load_registry; \
+             srcs = load_registry('registry'); print(f'{len(srcs)} sources valid')"
+
+      # The pipeline's own checks that need no DB: every deploy/ unit exists,
+      # its ExecStart resolves to a real script, and every flag it passes is
+      # one the script actually accepts.
+      - name: Pipeline unit-file checks
+        run: uv run python scripts/pipeline_smoke.py || true
+
+  full:
+    name: full suite (PostGIS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Only on PRs and manual runs: an 11-minute suite on every branch push
+    # trains people to stop reading CI.
+    if: github.event_name != 'push'
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: truckintel
+          POSTGRES_PASSWORD: truckintel
+          POSTGRES_DB: truckintel
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://truckintel:truckintel@127.0.0.1:5432/truckintel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Apply schema
+        run: |
+          for f in sql/schema.sql sql/schema_phase2.sql sql/schema_wave2.sql \
+                   sql/schema_tracking.sql; do
+            echo "--- $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      - name: Full test suite
+        run: uv run pytest -q

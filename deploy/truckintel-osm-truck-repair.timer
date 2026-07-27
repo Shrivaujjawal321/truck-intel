@@ -1,0 +1,28 @@
+# Fires truckintel-osm-truck-repair.service daily at 04:45 local.
+#
+# Why 04:45: fifteen minutes ahead of truckintel-mechanics-daily (05:00), so
+# the mechanic layer's --osm-match runs against the OSM edits fetched the same
+# morning. It also sits clear of the nightly quality pass (03:30) and the AAA
+# price fetch (06:15).
+#
+# Why daily and not weekly like the PBF POI refresh: this costs 357 KB and two
+# minutes. OSM is edited continuously, and a shop that gains a phone number or
+# opening_hours today is exactly the "unknown detail" the daily mechanic
+# refresh exists to pick up.
+#
+# RandomizedDelaySec spreads the query rather than hitting a donated public
+# endpoint on the stroke of the hour with every other scheduler on earth.
+#
+# Persistent=true: a laptop that was off at 04:45 fetches on next boot rather
+# than silently skipping the day.
+[Unit]
+Description=truck-intel daily OSM truck-repair timer (04:45 local)
+
+[Timer]
+OnCalendar=*-*-* 04:45:00
+RandomizedDelaySec=15m
+AccuracySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

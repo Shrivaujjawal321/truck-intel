@@ -1,0 +1,28 @@
+# Fires truckintel-mechanics-daily.service daily at 05:00 local.
+#
+# Why 05:00: fifteen minutes after truckintel-osm-truck-repair (04:45), so the
+# OSM corroboration join reads edits fetched the same morning. Clear of the
+# nightly quality pass (03:30) and ahead of the AAA price fetch (06:15), so the
+# HTML deliverable and the map layers are current before Boss looks at them.
+#
+# The monthly Overture pull (truckintel-mechanics.timer) also nominally starts
+# at 05:00 on the 2nd. That collision is deliberate rather than hidden: the
+# advisory lock in mechanic_list.py makes whichever loses the race exit 0 with
+# a "[skip]" line, and on the 2nd the monthly pull runs every stage this unit
+# would have run anyway. Moving the clocks apart would only disguise the
+# question, not answer it.
+#
+# Persistent=true: a laptop that was off at 05:00 refreshes on next boot. A
+# missed day should be visible in core.mechanic_fill_history's gap, not
+# silently skipped.
+[Unit]
+Description=truck-intel daily mechanic detail refresh timer (05:00 local)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+RandomizedDelaySec=20m
+AccuracySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

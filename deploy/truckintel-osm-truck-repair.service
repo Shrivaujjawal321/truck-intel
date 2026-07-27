@@ -1,0 +1,37 @@
+# truck-intel: daily refresh of the OSM truck-repair layer via Overpass.
+#
+# WHY THIS IS NOT PART OF truckintel-pois.service
+# -----------------------------------------------
+# truckintel-pois walks the 12 GB US PBF, which is the right tool for
+# amenity=fuel (108k rows) — no public API should be asked for that.
+#
+# Truck repair is 763 rows nationally. Measured 2026-07-27, the PBF path spent
+# 2 h 21 m and a node-location index past 1 GB before it was killed for making
+# the laptop unusable; the previous full pass took 2 h 51 m. Overpass returns
+# the identical 763 rows in ~2 minutes and 357 KB, from a replica minutes old
+# rather than a weekly snapshot.
+#
+# So this layer gets its own unit and its own transport: choose by result size,
+# not by habit.
+#
+# Runs BEFORE truckintel-mechanics-daily so that job's --osm-match sees today's
+# OSM edits, not yesterday's.
+#
+# One ops.source_runs row per invocation under 'osm_truck_repair_overpass', so
+# scripts/freshness_check.py alerts if the layer goes stale.
+[Unit]
+Description=truck-intel daily OSM truck-repair layer (Overpass API)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+# Generous relative to the ~2 min it takes: the script retries with backoff
+# across three Overpass mirrors, and busy public endpoints are normal, not an
+# emergency. Observed on the first live run: two 504s before a 200.
+TimeoutStartSec=30m
+ExecStart=%h/.local/bin/uv run python scripts/osm_overpass.py --job truck_repair
+# Trivial load, but stay out of the way of anything interactive regardless.
+Nice=10
+IOSchedulingClass=idle

@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 schema-wave2 sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume
+.PHONY: db-up schema schema-phase2 schema-wave2 schema-viewer schema-tracking route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers
 
 db-up:
 	./scripts/db_up.sh
@@ -15,6 +15,105 @@ schema-phase2:
 # Wave-2 additive schema (idempotent; requires schema + schema-phase2 first)
 schema-wave2:
 	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_wave2.sql
+
+# Low-zoom generalization the map viewer needs (idempotent, ~11 s).
+# Re-run after any core.truck_routes reload.
+schema-viewer:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/viewer_generalized.sql
+
+# Routable truck graph, end to end (~50 min: the build is the slow part).
+# Order matters — noding changes the topology, so components and the snap index
+# must both be rebuilt after it, in that order.
+route-graph:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/route_graph.sql
+	$(MAKE) route-node
+	$(MAKE) route-components
+	$(MAKE) route-snap-index
+
+# Split edges at junctions the published geometry implies but does not node.
+route-node:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/route_noding.sql
+
+# Label connected components (route.node_component). Re-run after any topology change.
+route-components:
+	uv run python scripts/route_components.py
+
+# Per-edge height / weight / hazmat limits, so a vehicle profile can constrain
+# the search. Re-run after any topology change (~15 min).
+route-limits:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/route_limits.sql
+
+# Nearest-mainland-edge lookup used when snapping a pickup/drop onto the network.
+route-snap-index:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/route_snap_index.sql
+
+# Attach full detail to every fuel station (name, address, phone, website,
+# hours, and the regional diesel price). Needs fuel-verify to have run first.
+fuel-enrich:
+	uv run python scripts/fuel_enrich.py
+
+# Daily per-state diesel prices from AAA. OPT-IN: their terms grant a limited
+# licence for PERSONAL, NON-COMMERCIAL use only, so this needs the flag set
+# deliberately. EIA (weekly, regional, public domain) works without it.
+aaa-prices:
+	AAA_PRICES_ENABLED=1 uv run python scripts/aaa_prices.py
+
+# Re-derive every published figure from the live database. Fails if any number
+# in the README, the viewer, or a source comment has drifted from the data.
+verify-claims:
+	uv run python scripts/verify_claims.py
+
+# Confirm fuel stations against a source independent of OpenStreetMap.
+# ~40 min: scans the 11 GB Overture mirror, then matches 108k stations.
+fuel-verify:
+	uv run python scripts/fuel_verify.py
+
+# Assign every fuel station its nearest truck-designated route (~2 min for 108k).
+# The fuel MAP LAYER filters on the on_route_5km column this writes, so the
+# layer is empty until this has run. Re-run after any fuel_stations reload —
+# scripts/osm_extract.py does it automatically after a POI swap.
+fuel-routes:
+	uv run python scripts/fuel_routes.py
+
+# Read-only: how many stations are on the truck network, and how far off.
+fuel-routes-report:
+	uv run python scripts/fuel_routes.py --report
+
+# Tracking tables + the narrow ingest role (idempotent).
+schema-tracking:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_tracking.sql
+
+# Weekly OSM POI refresh: fetch the Geofabrik extract only if its published md5
+# changed, then re-run the POI pass and re-derive truck-route columns.
+pois-refresh:
+	uv run python scripts/osm_pois_refresh.py
+
+# Is the upstream extract newer than ours? Writes nothing.
+pois-check:
+	uv run python scripts/osm_pois_refresh.py --check
+
+# Monthly truck-mechanic refresh (Overture pull + route assign + verify + HTML).
+mechanics:
+	uv run python scripts/mechanic_list.py
+
+# Tracking devices. The token prints ONCE — only its sha256 is stored.
+#   make track-add DEVICE=truck-14 LABEL="Volvo VNL 760"
+track-add:
+	uv run python scripts/track_device.py add $(DEVICE) --label "$(LABEL)"
+
+track-list:
+	uv run python scripts/track_device.py list
+
+# Retention is a window, not an archive (the daily timer runs this).
+track-prune:
+	uv run python scripts/track_device.py prune --days 30
+
+# The map viewer: every dataset on one map. Needs schema-viewer applied once.
+viewer:
+	./scripts/viewer_up.sh
+
+viewer-stop:
+	./scripts/viewer_up.sh --stop
 
 sync:
 	uv run python -m truckintel.registry
@@ -57,3 +156,58 @@ osm-ways:
 #        WORKDIR=data/pbf/.osmways-work-us-latest.osm-run1238
 osm-ways-resume:
 	uv run python scripts/osm_ways_job.py --pbf $(PBF) --from-spool $(WORKDIR)
+
+# ---------------------------------------------------------------- daily layer
+# OSM truck-repair via Overpass (763 US rows, ~2 min). NOT the PBF path: see
+# deploy/truckintel-osm-truck-repair.service for the measurement that decided it.
+osm-truck-repair:
+	uv run python scripts/osm_overpass.py --job truck_repair
+
+# Everything that fills mechanic DETAIL, minus the 3 h Overture pull. This is
+# what the daily timer runs.
+mechanics-refresh:
+	uv run python scripts/mechanic_list.py --refresh
+
+# Per-field coverage + what changed since the last snapshot. Read-only.
+mechanics-fill:
+	uv run python scripts/mechanic_list.py --fill-report
+
+# ------------------------------------------------------------------------ CI
+# `make ci` is the real gate on this project: there is no git remote yet, so
+# the GitHub Actions workflow in .github/workflows/ci.yml cannot run and the
+# local target is what actually protects main. Keep the two in step — the
+# workflow runs these same steps in the same order.
+#
+# Split into fast/slow deliberately. `ci-fast` needs no database and finishes in
+# seconds, so it is the one worth running before every commit; `ci` adds the
+# DB-backed suite (~11 min) and is the one to run before trusting a change.
+# No `-m "not needs_db"`: needs_db is a skipif marker, not a registered one, so
+# -m would match nothing. These files are DB-free by construction, and any
+# DB-backed case inside them skips itself when PostGIS is unreachable.
+ci-fast:
+	uv run python -m compileall -q scripts truckintel api
+	uv run pytest -q tests/test_mechanic_enrich.py tests/test_registry.py \
+	  tests/test_validate.py tests/test_parsers.py tests/test_politeness.py
+
+ci: ci-fast
+	uv run pytest -q
+	uv run python scripts/freshness_check.py || true
+	@echo "ci: OK"
+
+# Prove the scheduled pipeline actually works end to end, against the live DB,
+# without waiting a day for the timers. See scripts/pipeline_smoke.py.
+pipeline-smoke:
+	uv run python scripts/pipeline_smoke.py
+
+# Install/refresh the systemd user units from deploy/ and enable the timers.
+install-timers:
+	install -Dm644 deploy/truckintel-*.service deploy/truckintel-*.timer \
+	  -t $(HOME)/.config/systemd/user/
+	systemctl --user daemon-reload
+	systemctl --user enable --now \
+	  truckintel-tick.timer truckintel-freshness.timer truckintel-quality.timer \
+	  truckintel-aaa-prices.timer truckintel-pois.timer \
+	  truckintel-osm-truck-repair.timer truckintel-mechanics.timer \
+	  truckintel-mechanics-daily.timer truckintel-businesses.timer \
+	  truckintel-track-prune.timer truckintel-weekly-digest.timer
+	systemctl --user list-timers 'truckintel-*'

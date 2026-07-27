@@ -1,0 +1,46 @@
+# truck-intel: DAILY refresh of mechanic detail (everything except Overture).
+#
+# THE SPLIT, AND WHY
+# ------------------
+# truckintel-mechanics.service runs monthly and does the expensive part: a
+# national Overture Places parquet scan (~3 h) that discovers WHICH shops
+# exist. Overture publishes monthly, so polling it faster would burn a national
+# scan to rewrite identical rows and reset observed_at, making stale data look
+# fresh.
+#
+# But the sources that fill in DETAIL about those shops change daily:
+#   - NY/NJ licence registries      (Socrata, updated continuously)
+#   - All The Places chain feeds    (re-scraped weekly)
+#   - OpenStreetMap                 (edited continuously)
+# Leaving those on the monthly schedule meant a shop could gain a licence
+# record, opening hours, or an independent corroboration and we would not know
+# for up to 31 days.
+#
+# `--refresh` is the whole pipeline MINUS the Overture pull. Minutes, not hours.
+#
+# It ends with a fill report: per-field coverage plus the delta since the last
+# run, so a day that learned nothing is visibly different from a day that
+# learned something. Without that, a refresh which silently stopped finding
+# detail would look exactly like one that is working.
+#
+# CONCURRENCY: on the 2nd of each month this and the monthly pull are both due.
+# mechanic_list.py takes a Postgres advisory lock for its whole run and exits 0
+# with a "[skip]" line if another run holds it, so the two can never interleave
+# a TRUNCATE+reload with UPDATEs. Timing them apart is not a guarantee — a slow
+# pull outlives any gap — so the lock is the guarantee and the clock is only a
+# courtesy.
+[Unit]
+Description=truck-intel daily mechanic detail refresh (licence + chains + OSM + verify)
+After=network-online.target docker.service truckintel-osm-truck-repair.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+# Measured ~4 min: two Socrata registry pulls (22.8k rows), five All The Places
+# spiders, an OSM spatial join, 11.7k re-scores, the CBP denominator and the
+# HTML render. The ceiling is for a slow upstream, not for normal work.
+TimeoutStartSec=45m
+ExecStart=%h/.local/bin/uv run python scripts/mechanic_list.py --refresh
+Nice=10
+IOSchedulingClass=idle
