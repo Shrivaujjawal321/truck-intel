@@ -18,9 +18,29 @@
 -- Apply:  make route-graph
 -- Rebuild after a truck_routes reload: same command (it drops and recreates).
 
+CREATE SCHEMA IF NOT EXISTS route;
+
+-- route.mainland_edges is a MATERIALIZED VIEW over route.edges, created by
+-- sql/route_snap_index.sql later in this same rebuild chain. On a virgin
+-- database it does not exist and this is a no-op; on a RE-RUN it does, and it
+-- blocks the DROP below with:
+--
+--   ERROR: cannot drop table route.edges because other objects depend on it
+--   DETAIL: materialized view route.mainland_edges depends on table route.edges
+--
+-- So this file only ever worked once. `make route-graph` a second time failed,
+-- and so did the first automated route_rebuild — which is how it was found
+-- (2026-07-27): nobody had re-run the chain end to end before it was scheduled.
+--
+-- Dropped EXPLICITLY rather than with DROP TABLE ... CASCADE: cascade would
+-- silently remove whatever happens to depend on route.edges, including objects
+-- this file has never heard of. Naming the dependency means an unexpected one
+-- still stops the rebuild loudly instead of being deleted quietly.
+-- route_snap_index.sql recreates it, so nothing is lost.
+DROP MATERIALIZED VIEW IF EXISTS route.mainland_edges;
+
 DROP TABLE IF EXISTS route.edges;
 DROP TABLE IF EXISTS route.nodes;
-CREATE SCHEMA IF NOT EXISTS route;
 
 -- --- nodes: every distinct segment endpoint ---------------------------------
 -- Endpoints coincide exactly in this dataset (verified: 455,414 distinct points

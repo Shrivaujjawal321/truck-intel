@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import tempfile
 import sys
 import time
 from pathlib import Path
@@ -117,42 +116,43 @@ def staleness() -> tuple[bool, str]:
                    f"routes publish {routes_at:%Y-%m-%d %H:%M}")
 
 
-def _pin_sql(tmpdir: Path) -> dict[str, Path]:
-    """Copy every SQL step into a private directory before the rebuild starts.
+def pin_sql() -> dict[str, str]:
+    """Read every SQL step INTO MEMORY before the rebuild starts.
 
-    DEPLOY SAFETY. This job runs ~50 minutes and shells out to sql/*.sql
-    BETWEEN steps, reading each file from the working tree at the moment it is
-    needed. A `git pull` landing mid-rebuild would hand the later steps a
-    different schema from the one the earlier steps built — a graph that is
-    half one version and half another, with every step reporting success.
+    DEPLOY SAFETY. This job runs ~50 minutes and applies sql/*.sql BETWEEN
+    steps. Reading each file at the moment it is needed means a `git pull`
+    landing mid-rebuild hands the later steps a different schema from the one
+    the earlier steps built — a graph half one version and half another, with
+    every step still reporting success. Python's own modules are immune (they
+    were imported at start); the SQL was the hole.
 
-    Python's own modules are already immune (they were imported at start); the
-    SQL was the hole. Pinning here means a rebuild always completes on the code
-    it began with, and the NEXT run picks up the change — which is the
-    behaviour Boss asked for on 2026-07-27: a push must land, and not disturb
-    work already in flight.
+    In memory, not a temp directory. The first attempt copied the files to
+    /tmp and passed `psql -f /tmp/...`, which cannot work here: db_psql.sh runs
+    psql INSIDE the truckintel-pg container, so a host path is meaningless to
+    it. That mistake also revealed the original code had the same flaw —
+    `-f sql/route_graph.sql` was equally unreadable from inside the container,
+    so this rebuild had never once succeeded. It went unnoticed because
+    `--check` uses psycopg directly and passes fine; only running the thing for
+    real surfaced it.
+
+    db_psql.sh's own header documents the correct route: pipe via stdin.
     """
-    pinned: dict[str, Path] = {}
-    for label, kind, payload in STEPS:
-        if kind != "sql":
-            continue
-        dest = tmpdir / Path(payload).name
-        dest.write_text((REPO / payload).read_text())
-        pinned[payload] = dest
-    return pinned
+    return {payload: (REPO / payload).read_text()
+            for _, kind, payload in STEPS if kind == "sql"}
 
 
 def _run_step(label: str, kind: str, payload: str,
-              pinned: dict[str, Path] | None = None) -> None:
+              pinned: dict[str, str] | None = None) -> None:
     t0 = time.time()
     print(f"[rebuild] {label} …", flush=True)
     if kind == "sql":
-        path = str((pinned or {}).get(payload, REPO / payload))
-        cmd = ["./scripts/db_psql.sh", "-v", "ON_ERROR_STOP=1", "-q",
-               "-f", path]
+        sql = (pinned or {}).get(payload) or (REPO / payload).read_text()
+        proc = subprocess.run(
+            ["./scripts/db_psql.sh", "-v", "ON_ERROR_STOP=1", "-q"],
+            cwd=REPO, input=sql, capture_output=True, text=True)
     else:
-        cmd = [sys.executable, payload]
-    proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+        proc = subprocess.run([sys.executable, payload], cwd=REPO,
+                              capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
             f"{label} failed (exit {proc.returncode}): "
@@ -185,13 +185,12 @@ def rebuild() -> int:
           flush=True)
     t0 = time.time()
     try:
-        with tempfile.TemporaryDirectory(prefix="route-rebuild-") as tmp:
-            pinned = _pin_sql(Path(tmp))
-            print(f"[rebuild] pinned {len(pinned)} SQL step(s) — a deploy "
-                  f"landing mid-run cannot change what this rebuild executes",
-                  flush=True)
-            for label, kind, payload in STEPS:
-                _run_step(label, kind, payload, pinned)
+        pinned = pin_sql()
+        print(f"[rebuild] pinned {len(pinned)} SQL step(s) in memory — a deploy "
+              f"landing mid-run cannot change what this rebuild executes",
+              flush=True)
+        for label, kind, payload in STEPS:
+            _run_step(label, kind, payload, pinned)
         with get_conn() as conn:
             edges = conn.execute("SELECT count(*) FROM route.edges").fetchone()[0]
             nodes = conn.execute("SELECT count(*) FROM route.nodes").fetchone()[0]
