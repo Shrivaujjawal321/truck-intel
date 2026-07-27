@@ -57,9 +57,17 @@ jobs:
       # production failure, not a lint nit. load_registry validates the
       # allow-listed target, the parser module's importability and the
       # positive-int schedule fields.
+      # Block scalar, not a folded one with a backslash: YAML folds the newline
+      # to a space and the `\` survives as a literal line-continuation
+      # character mid-statement, which Python rejects. Caught by this workflow's
+      # own first run.
       - name: Validate the source registry
-        run: uv run python -c "from truckintel.registry import load_registry; \
-             srcs = load_registry('registry'); print(f'{len(srcs)} sources valid')"
+        run: |
+          uv run python - <<'PY'
+          from truckintel.registry import load_registry
+          srcs = load_registry("registry")
+          print(f"{len(srcs)} sources valid")
+          PY
 
       # The pipeline's own checks that need no DB: every deploy/ unit exists,
       # its ExecStart resolves to a real script, and every flag it passes is
