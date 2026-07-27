@@ -38,9 +38,17 @@ def _write(tmp_path, name: str, doc: dict) -> None:
 # ------------------------------------------------- registry: parser/target keys
 
 def test_snapshot_allowlist_is_the_5_1_naming_map():
+    """The exact set is pinned, not just membership: this allow-list is what
+    stops an unvalidated identifier from being interpolated into swap SQL, so
+    growing it must be a deliberate edit here, never a side effect elsewhere.
+
+    osm.truck_repair joined on 2026-07-27 with the mechanic layer's OSM
+    corroboration source.
+    """
     assert SNAPSHOT_TARGETS == {
-        "core.bridges", "core.tunnels", "core.parking_sites",
+        "core.bridges", "core.tunnels", "core.parking_sites", "core.truck_routes",
         "osm.ways", "osm.fuel_stations", "osm.rest_areas", "osm.weigh_points",
+        "osm.truck_repair",
     }
 
 
@@ -355,10 +363,14 @@ def test_snapshot_swap_run_enqueues_rescore(monkeypatch, tmp_path):
 
     seen_targets: list[str] = []
 
-    def redirect_swap(conn, target, rows, *, source_id, run_id):
+    def redirect_swap(conn, target, rows, *, source_id, run_id, min_rows=1):
         seen_targets.append(target)  # resolved from the DB row, allow-listed
+        # Forward min_rows rather than dropping it: this stub stands in for the
+        # real loader, so a signature that silently ignored the empty-publish
+        # floor would let that guard regress with the suite still green.
         return loaders.snapshot_swap(
-            conn, f"{SCHEMA}.sites", rows, source_id=source_id, run_id=run_id)
+            conn, f"{SCHEMA}.sites", rows, source_id=source_id, run_id=run_id,
+            min_rows=min_rows)
 
     monkeypatch.setattr(engine, "snapshot_swap", redirect_swap)
 

@@ -208,6 +208,37 @@ CREATE TABLE IF NOT EXISTS osm.rest_areas (
 );
 CREATE INDEX IF NOT EXISTS osm_rest_areas_geom_gix ON osm.rest_areas USING GIST (geom);
 
+-- osm.truck_repair — shop=truck_repair, plus car-repair shops that declare a
+-- truck/trailer capability via service:vehicle:*. OSM is the ONLY independent
+-- truck-specific corroboration available: every Overture source feed belongs
+-- to one of three organisations, and the state licence registries cover all
+-- vehicle repair without a truck flag. ODbL stays here in osm.* and is joined
+-- at query time — core.mechanic_shops only ever receives a match FLAG.
+CREATE TABLE IF NOT EXISTS osm.truck_repair (
+    osm_id        TEXT PRIMARY KEY,
+    name          TEXT,
+    brand         TEXT,
+    state         CHAR(2),
+    truck_repair  BOOLEAN,                     -- shop=truck_repair or service:vehicle:truck_repair=yes
+    trailer_repair BOOLEAN,                    -- service:vehicle:trailer_repair=yes
+    hgv_access    BOOLEAN,
+    geom          geometry(Point, 4326) NOT NULL,
+    -- lineage
+    source_id     TEXT NOT NULL,
+    run_id        BIGINT NOT NULL,
+    ingested_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    observed_at   TIMESTAMPTZ,
+    -- quality
+    confidence    SMALLINT,
+    conf_trust    SMALLINT,
+    conf_fresh    SMALLINT,
+    conf_complete SMALLINT,
+    conf_agree    SMALLINT,
+    flags         TEXT[] NOT NULL DEFAULT '{}',
+    props         JSONB NOT NULL DEFAULT '{}'  -- full tag dict; opening_hours lives here
+);
+CREATE INDEX IF NOT EXISTS osm_truck_repair_geom_gix ON osm.truck_repair USING GIST (geom);
+
 -- osm.weigh_points — amenity=weighbridge / highway=weigh_station
 CREATE TABLE IF NOT EXISTS osm.weigh_points (
     osm_id        TEXT PRIMARY KEY,

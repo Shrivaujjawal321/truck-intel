@@ -5,6 +5,8 @@
   highway=rest_area / highway=services          -> osm.rest_areas
   amenity=weighbridge / man_made=weighbridge
     / highway=weigh_station                     -> osm.weigh_points
+  shop=truck_repair / service:vehicle:truck_repair=yes
+    / service:vehicle:trailer_repair=yes        -> osm.truck_repair
 as nodes + way-centroids, then publishes each table via the existing
 snapshot_swap loader (targets are in registry.SNAPSHOT_TARGETS). Relations are
 NOT processed (877 US amenity=fuel relations skipped, honestly — a later pass
@@ -75,6 +77,7 @@ POIS_TARGETS: dict[str, str] = {
     "fuel": "osm.fuel_stations",
     "rest": "osm.rest_areas",
     "weigh": "osm.weigh_points",
+    "repair": "osm.truck_repair",
 }
 
 # Exact key=value pairs the C++ TagFilter passes through to Python.
@@ -85,6 +88,11 @@ _MATCH_TAGS = (
     ("amenity", "weighbridge"),
     ("man_made", "weighbridge"),
     ("highway", "weigh_station"),
+    # truck repair: the direct shop tag, plus the capability tags that sit on
+    # shops whose primary tag is shop=car_repair. Overture exposes neither.
+    ("shop", "truck_repair"),
+    ("service:vehicle:truck_repair", "yes"),
+    ("service:vehicle:trailer_repair", "yes"),
 )
 
 _US_STATES = frozenset(
@@ -127,6 +135,22 @@ def classify(tags: dict) -> str | None:
     if tags.get("highway") in ("rest_area", "services"):
         return "rest"
     return None
+
+
+def is_truck_repair(tags: dict) -> bool:
+    """Does this object offer truck or trailer repair?
+
+    Deliberately NOT a branch of classify(). A truck stop can be BOTH a fuel
+    station and a repair shop, and classify() returns exactly one kind — so
+    folding repair into it would silently move those sites out of
+    osm.fuel_stations and shrink a working layer. Repair is an OVERLAPPING
+    layer instead: an object can appear in both, which is what the map needs.
+    """
+    return (
+        tags.get("shop") == "truck_repair"
+        or tags.get("service:vehicle:truck_repair") == "yes"
+        or tags.get("service:vehicle:trailer_repair") == "yes"
+    )
 
 
 def _tristate(value: str | None, *, true: tuple[str, ...], false: tuple[str, ...]) -> bool | None:
@@ -218,6 +242,21 @@ def _row(kind: str, osm_id: str, tags: dict, lat: float, lon: float,
             hgv_access=hgv_access(tags),
             has_def=has_def(tags),
         )
+    elif kind == "repair":
+        row.update(
+            brand=tags.get("brand"),
+            # Tri-state as everywhere else: a shop=truck_repair that says
+            # nothing about trailers is NULL there, not False.
+            truck_repair=(
+                True if (tags.get("shop") == "truck_repair"
+                         or tags.get("service:vehicle:truck_repair") == "yes")
+                else _tristate(tags.get("service:vehicle:truck_repair"),
+                               true=("yes",), false=("no",))
+            ),
+            trailer_repair=_tristate(tags.get("service:vehicle:trailer_repair"),
+                                     true=("yes",), false=("no",)),
+            hgv_access=hgv_access(tags),
+        )
     return row
 
 
@@ -226,7 +265,8 @@ def collect_pois(pbf: Path, *, node_cache: Path) -> tuple[dict[str, list[dict]],
     dicts (loaders.py conventions) + honest stats. Node locations go through
     the disk-based sparse_file_array at node_cache — never RAM."""
     observed_at, basis = pbf_observed_at(pbf)
-    rows: dict[str, list[dict]] = {"fuel": [], "rest": [], "weigh": []}
+    rows: dict[str, list[dict]] = {"fuel": [], "rest": [], "weigh": [],
+                                   "repair": []}
     stats = {
         "observed_at": observed_at,
         "observed_at_basis": basis,
@@ -242,28 +282,33 @@ def collect_pois(pbf: Path, *, node_cache: Path) -> tuple[dict[str, list[dict]],
     matched = 0
     for obj in fp:
         tags = dict(obj.tags)
-        kind = classify(tags)
-        if kind is None:  # TagFilter is exact, but classify stays the authority
+        # classify() stays the authority for the three mutually-exclusive
+        # kinds; repair is additive, so an object can land in two lists.
+        kinds = [k for k in (classify(tags),) if k is not None]
+        if is_truck_repair(tags):
+            kinds.append("repair")
+        if not kinds:  # TagFilter is exact, but the classifiers decide
             continue
         if obj.is_node():
             if not obj.location.valid():
                 continue
-            rows[kind].append(_row(kind, f"node/{obj.id}", tags,
-                                   obj.location.lat, obj.location.lon, observed_at))
+            lat, lon, osm_id = obj.location.lat, obj.location.lon, f"node/{obj.id}"
             stats["nodes"] += 1
         else:
             centroid = _way_centroid(obj)
             if centroid is None:
                 stats["ways_skipped_no_location"] += 1
                 continue
-            rows[kind].append(_row(kind, f"way/{obj.id}", tags,
-                                   centroid[0], centroid[1], observed_at))
+            lat, lon, osm_id = centroid[0], centroid[1], f"way/{obj.id}"
             stats["ways"] += 1
+        for kind in kinds:
+            rows[kind].append(_row(kind, osm_id, tags, lat, lon, observed_at))
         matched += 1
         if matched % _PROGRESS_EVERY == 0:
             print(f"  ... {matched} POIs matched "
                   f"(fuel={len(rows['fuel'])} rest={len(rows['rest'])} "
-                  f"weigh={len(rows['weigh'])})", flush=True)
+                  f"weigh={len(rows['weigh'])} repair={len(rows['repair'])})",
+                  flush=True)
     return rows, stats
 
 
@@ -289,12 +334,44 @@ def _finish_run(run_id: int, status: str, *, message: str | None = None,
         )
 
 
+def _is_empty(conn, target: str) -> bool:
+    """True when `target` is absent or holds no rows — i.e. a swap that
+    publishes nothing would destroy nothing."""
+    if conn.execute("SELECT to_regclass(%s) IS NULL", (target,)).fetchone()[0]:
+        return True
+    return not conn.execute(
+        f"SELECT EXISTS (SELECT 1 FROM {target} LIMIT 1)").fetchone()[0]
+
+
+def _reassign_fuel_routes(target: str) -> int:
+    """Re-derive nearest-truck-route columns after a POI-table swap.
+
+    Returns rows assigned. ~132 s for the national 108k-station table, against a
+    POI pass that already runs for many minutes, so it is not worth deferring to
+    a separate schedule that could drift out of step with the data.
+    """
+    from truckintel.route_assign import add_route_columns, assign_nearest_route
+    with get_conn() as conn:
+        add_route_columns(conn, target)
+        n = assign_nearest_route(conn, target, "osm_id")
+    print(f"route reassignment: {n} rows in {target}", flush=True)
+    return n
+
+
 def run_pois(pbf: Path = DEFAULT_PBF, *, targets: dict[str, str] | None = None,
              source_id: str = POIS_SOURCE_ID, node_cache: Path | None = None,
-             keep_cache: bool = False) -> dict[str, int]:
-    """Full --job pois run: collect, then swap all three tables in ONE
-    transaction (a failure rolls everything back — live tables untouched),
-    under ONE audited ops.source_runs row. Returns rows published per kind.
+             keep_cache: bool = False,
+             only: tuple[str, ...] | None = None) -> dict[str, int]:
+    """Full --job pois run: collect, then swap the tables in ONE transaction
+    (a failure rolls everything back — live tables untouched), under ONE
+    audited ops.source_runs row. Returns rows published per kind.
+
+    `only` restricts which tables are PUBLISHED; the pass itself always reads
+    every kind, so this never costs a second walk of the PBF. Two reasons it
+    exists: refreshing the repair layer should not force a re-swap of three
+    unrelated tables, and a swap can be blocked by an object outside this
+    repo's control — a hand-made view left on osm.fuel_stations makes
+    DROP ... _old fail, which would otherwise take the whole run down with it.
 
     targets/source_id overrides exist for the tests (scratch schemas —
     production callers pass nothing)."""
@@ -302,6 +379,10 @@ def run_pois(pbf: Path = DEFAULT_PBF, *, targets: dict[str, str] | None = None,
     if not pbf.exists():
         raise FileNotFoundError(f"PBF not found: {pbf}")
     tgt = {**POIS_TARGETS, **(targets or {})}
+    kinds = tuple(only) if only else ("fuel", "rest", "weigh", "repair")
+    unknown = set(kinds) - set(tgt)
+    if unknown:
+        raise ValueError(f"unknown --only kind(s): {sorted(unknown)}")
     cache = Path(node_cache) if node_cache else pbf.with_name(pbf.name + ".nodecache")
     run_id = _start_run(source_id)
     print(f"{source_id} run {run_id}: pass over {pbf} "
@@ -312,12 +393,32 @@ def run_pois(pbf: Path = DEFAULT_PBF, *, targets: dict[str, str] | None = None,
         finally:
             if not keep_cache and cache.exists():
                 cache.unlink()
-        with get_conn() as conn:  # one transaction: all three swaps or none
-            published = {
-                kind: snapshot_swap(conn, tgt[kind], rows[kind],
-                                    source_id=source_id, run_id=run_id)
-                for kind in ("fuel", "rest", "weigh")
-            }
+        with get_conn() as conn:  # one transaction: every selected swap or none
+            published, skipped = {}, []
+            for kind in kinds:
+                # snapshot_swap's min_rows floor exists so a truncated upstream
+                # can never silently delete a live dataset. But a REGIONAL
+                # extract legitimately holds zero of a POI class — Delaware has
+                # no truck-repair POI at all — and refusing there would take
+                # the whole run down over a layer that is genuinely empty.
+                # The distinction that matters is whether anything would be
+                # LOST: skip only when the live target is empty too, so a
+                # populated table is still never replaced by nothing.
+                if not rows[kind] and _is_empty(conn, tgt[kind]):
+                    skipped.append(kind)
+                    continue
+                published[kind] = snapshot_swap(
+                    conn, tgt[kind], rows[kind],
+                    source_id=source_id, run_id=run_id)
+        # The swap replaces the table with a LIKE … INCLUDING ALL clone, so the
+        # route-assignment columns exist but come back NULL — and the fuel map
+        # layer draws only `on_route_5km`, so skipping this would empty that
+        # layer while every run still reported success. Re-derive in the same
+        # invocation: the assignment is a *derivative* of the swap, not a
+        # separate schedule that might be disabled. Only for the kinds actually
+        # published — a --only run must not touch a table it did not swap.
+        reassigned = sum(_reassign_fuel_routes(tgt[k])
+                         for k in ("fuel", "repair") if k in published)
     except BaseException as exc:
         _finish_run(run_id, "failed",
                     message=(str(exc) or type(exc).__name__)[:1000])
@@ -326,8 +427,11 @@ def run_pois(pbf: Path = DEFAULT_PBF, *, targets: dict[str, str] | None = None,
         f"pbf={pbf.name}; observed_at={stats['observed_at']:%Y-%m-%dT%H:%M:%SZ} "
         f"({stats['observed_at_basis']}); "
         + ", ".join(f"{tgt[k]}={n}" for k, n in published.items())
+        # Never let a skip pass as a publish: the audit row says so out loud.
+        + (f"; skipped_empty={','.join(tgt[k] for k in skipped)}" if skipped else "")
         + f"; nodes={stats['nodes']} way_centroids={stats['ways']}"
         f" ways_skipped_no_location={stats['ways_skipped_no_location']}"
+        f"; route_reassigned={reassigned}"
     )
     _finish_run(run_id, "success", message=message,
                 rows_published=sum(published.values()))
@@ -349,7 +453,30 @@ def main(argv: list[str] | None = None) -> int:
                              "(default: <pbf>.nodecache)")
     parser.add_argument("--keep-cache", action="store_true",
                         help="keep the node cache file after the run")
+    parser.add_argument("--only", default=None,
+                        help="--job pois only: comma-separated kinds to "
+                             "PUBLISH (fuel,rest,weigh,repair). The pass still "
+                             "reads all of them; this restricts which tables "
+                             "are swapped. Default: all four.")
+    parser.add_argument("--from-spool", metavar="WORKDIR_OR_SPOOL", default=None,
+                        help="--job ways only: skip the osmium pass and replay "
+                             "phase B from a kept workdir. Without this the "
+                             "recovery path was unreachable from the engine's "
+                             "derived runner, which is the entry point that "
+                             "actually runs unattended.")
+    parser.add_argument("--min-rows", type=int, default=1,
+                        help="--job ways only: refuse the swap below this many "
+                             "rows (default 1 — never replace live with empty)")
+    parser.add_argument("--accept-unverified-spool", action="store_true",
+                        help="--job ways only: load a spool with no completion "
+                             "manifest (an interrupted pass holds PART of the "
+                             "ways)")
     args = parser.parse_args(argv)
+    if args.job != "ways" and (args.from_spool or args.accept_unverified_spool):
+        parser.error("--from-spool / --accept-unverified-spool apply to "
+                     "--job ways only")
+    if args.job != "pois" and args.only:
+        parser.error("--only applies to --job pois only")
 
     load_dotenv()
     try:
@@ -360,11 +487,16 @@ def main(argv: list[str] | None = None) -> int:
                 print("scripts/osm_ways_job.py not present yet — the ways "
                       "track owns '--job ways'", file=sys.stderr)
                 return 1
-            osm_ways_job.run_ways(args.pbf, node_cache=args.node_cache,
-                                  keep_cache=args.keep_cache)
+            osm_ways_job.run_ways(
+                args.pbf, node_cache=args.node_cache,
+                keep_cache=args.keep_cache, from_spool=args.from_spool,
+                min_rows=args.min_rows,
+                accept_unverified_spool=args.accept_unverified_spool)
         else:
             run_pois(args.pbf, node_cache=args.node_cache,
-                     keep_cache=args.keep_cache)
+                     keep_cache=args.keep_cache,
+                     only=tuple(k.strip() for k in args.only.split(","))
+                     if args.only else None)
     except SystemExit:
         raise
     except BaseException as exc:

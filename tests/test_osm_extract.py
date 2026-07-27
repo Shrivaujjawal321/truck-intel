@@ -95,7 +95,9 @@ def test_state_code_valid_usps_only():
 
 def _write_pbf(path: Path, *, header_stamp: str | None = STAMP) -> Path:
     """Tiny deterministic PBF: 3 fuel nodes (diesel yes/no/absent), rest area,
-    weighbridge, and one fuel WAY over untagged nodes (centroid test)."""
+    weighbridge, one fuel WAY over untagged nodes (centroid test), a plain
+    truck-repair shop, a car-repair shop that declares a truck capability, and
+    a fuel station that is ALSO a repair shop (the overlap case)."""
     header = osmium.io.Header()
     if header_stamp:
         header.set("osmosis_replication_timestamp", header_stamp)
@@ -114,6 +116,17 @@ def _write_pbf(path: Path, *, header_stamp: str | None = STAMP) -> Path:
         "amenity": "weighbridge"}))
     w.add_node(mutable.Node(id=6, location=(-75.55, 39.75), tags={
         "amenity": "cafe", "name": "Not A POI We Want"}))
+    w.add_node(mutable.Node(id=7, location=(-75.56, 39.76), tags={
+        "shop": "truck_repair", "name": "Big Rig Repair",
+        "opening_hours": "Mo-Fr 08:00-18:00", "addr:state": "DE"}))
+    w.add_node(mutable.Node(id=8, location=(-75.57, 39.77), tags={
+        "shop": "car_repair", "name": "Capability Tagged",
+        "service:vehicle:trailer_repair": "yes"}))
+    # amenity=fuel AND shop=truck_repair: must appear in BOTH layers, because
+    # classify() is exclusive but repair is additive.
+    w.add_node(mutable.Node(id=9, location=(-75.58, 39.78), tags={
+        "amenity": "fuel", "shop": "truck_repair", "name": "Speedco-ish",
+        "fuel:diesel": "yes"}))
     # untagged geometry nodes for the fuel way (locations resolve via the
     # disk node cache, not RAM)
     w.add_node(mutable.Node(id=10, location=(-75.60, 39.80)))
@@ -133,8 +146,19 @@ def test_collect_pois_synthetic(mini_pbf, tmp_path):
     rows, stats = ox.collect_pois(mini_pbf, node_cache=tmp_path / "cache.bin")
     by_id = {r["osm_id"]: r for kind in rows.values() for r in kind}
 
-    assert len(rows["fuel"]) == 4 and len(rows["rest"]) == 1 and len(rows["weigh"]) == 1
+    assert len(rows["fuel"]) == 5 and len(rows["rest"]) == 1 and len(rows["weigh"]) == 1
+    assert len(rows["repair"]) == 3
     assert "node/6" not in by_id  # the cafe never matches
+
+    # node/9 is both a fuel station and a repair shop — the repair layer must
+    # not steal it out of the fuel layer.
+    assert "node/9" in {r["osm_id"] for r in rows["fuel"]}
+    assert "node/9" in {r["osm_id"] for r in rows["repair"]}
+    rep = {r["osm_id"]: r for r in rows["repair"]}
+    assert rep["node/7"]["truck_repair"] is True
+    assert rep["node/7"]["props"]["opening_hours"] == "Mo-Fr 08:00-18:00"
+    assert rep["node/8"]["trailer_repair"] is True
+    assert rep["node/8"]["truck_repair"] is None   # tri-state: unstated stays unknown
 
     alpha = by_id["node/1"]
     assert alpha["has_diesel"] is True
@@ -171,12 +195,18 @@ def test_observed_at_falls_back_to_mtime_documented(tmp_path):
 
 @pytest.fixture()
 def scratch():
-    """Scratch schema with LIKE-clones of the three osm.* targets, plus
-    ops cleanup — live osm/core tables are never touched."""
+    """Scratch schema with LIKE-clones of the four osm.* targets, plus ops
+    cleanup — live osm/core tables are never touched.
+
+    Every kind in POIS_TARGETS must appear here. A kind missing from this map
+    falls through to its LIVE table, so an omission does not fail the test —
+    it writes to production.
+    """
     with get_conn() as conn:
         conn.execute(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE")
         conn.execute(f"CREATE SCHEMA {SCHEMA}")
-        for table in ("fuel_stations", "rest_areas", "weigh_points"):
+        for table in ("fuel_stations", "rest_areas", "weigh_points",
+                      "truck_repair"):
             conn.execute(
                 f"CREATE TABLE {SCHEMA}.{table} "
                 f"(LIKE osm.{table} INCLUDING ALL)"
@@ -185,6 +215,7 @@ def scratch():
         "fuel": f"{SCHEMA}.fuel_stations",
         "rest": f"{SCHEMA}.rest_areas",
         "weigh": f"{SCHEMA}.weigh_points",
+        "repair": f"{SCHEMA}.truck_repair",
     }
     with get_conn() as conn:
         conn.execute(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE")
@@ -196,7 +227,7 @@ def scratch():
 def test_run_pois_synthetic_end_to_end(mini_pbf, tmp_path, scratch):
     published = ox.run_pois(mini_pbf, targets=scratch, source_id=SRC,
                             node_cache=tmp_path / "cache.bin")
-    assert published == {"fuel": 4, "rest": 1, "weigh": 1}
+    assert published == {"fuel": 5, "rest": 1, "weigh": 1, "repair": 3}
 
     with get_conn() as conn:
         fuel = conn.execute(
@@ -206,7 +237,7 @@ def test_run_pois_synthetic_end_to_end(mini_pbf, tmp_path, scratch):
             f"FROM {scratch['fuel']} ORDER BY osm_id"
         ).fetchall()
         by_id = {r[0]: r for r in fuel}
-        assert set(by_id) == {"node/1", "node/2", "node/3", "way/100"}
+        assert set(by_id) == {"node/1", "node/2", "node/3", "node/9", "way/100"}
         assert by_id["node/1"][1] is True and by_id["node/1"][3] == "DE"
         assert by_id["node/1"][5] == "24/7"
         assert by_id["node/3"][1] is None          # tri-state survives the swap
@@ -219,7 +250,7 @@ def test_run_pois_synthetic_end_to_end(mini_pbf, tmp_path, scratch):
             "WHERE source_id = %s ORDER BY run_id DESC LIMIT 1", (SRC,)
         ).fetchone()
     assert status == "success"
-    assert rows_published == 6
+    assert rows_published == 10   # 5 fuel + 1 rest + 1 weigh + 3 repair
     assert "pbf_replication_timestamp" in message
 
 

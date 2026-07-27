@@ -23,10 +23,12 @@ SNAPSHOT_TARGETS = frozenset({
     "core.bridges",
     "core.tunnels",
     "core.parking_sites",
+    "core.truck_routes",
     "osm.ways",
     "osm.fuel_stations",
     "osm.rest_areas",
     "osm.weigh_points",
+    "osm.truck_repair",
 })
 
 # `parser:` must be a bare module name inside truckintel/parsers/ — no dots,
