@@ -19,10 +19,13 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import re
 import sys
 from datetime import date
 from pathlib import Path
+
+import yaml
 
 from truckintel.politeness import polite_get
 
@@ -181,6 +184,68 @@ def discover(csv_bytes: bytes, out_dir: Path) -> list[dict]:
     return summary
 
 
+def check_liveness(out_dir: Path, timeout: int = 20) -> list[dict]:
+    """Fetch every proposed feed and report whether it actually serves WZDx.
+
+    WHY ONLY THIS HALF IS AUTOMATED
+    -------------------------------
+    Promotion into registry/ needs two answers: "does the feed work?" and "do
+    the agency's terms permit use?". The first is a fact a script can settle.
+    The second is a legal judgement, and every proposal this script writes says
+    so in its own licence field: "UNVERIFIED — confirm feed terms before
+    promotion". Automating that away would be forging the review, not doing it.
+
+    So this narrows the human's job to the part only a human can do: instead of
+    opening 21 URLs to see which are even alive, they get a list of the live
+    ones and read terms for those alone.
+
+    Returns one dict per proposal: {source_id, state, url, status, detail}.
+    """
+    import urllib.error
+    import urllib.request
+
+    from truckintel.config import user_agent
+
+    results = []
+    for path in sorted(out_dir.glob("wzdx_*.yaml")):
+        doc = yaml.safe_load(path.read_text())
+        url, sid = doc.get("url"), doc.get("id")
+        entry = {"source_id": sid, "state": (sid or "")[-2:].upper(),
+                 "url": url, "status": "unknown", "detail": ""}
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": user_agent()})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                # Read the WHOLE body. An earlier version capped this at 400 KB
+                # to be frugal and then json.loads()'d the result — which
+                # truncates any feed bigger than that into invalid JSON and
+                # reports it as "not-json". It called AZ, KS, MN and WA dead
+                # while all four were in registry/ and had published
+                # successfully that morning. A check that lies about working
+                # feeds is worse than no check.
+                body = resp.read()
+            data = json.loads(body)
+            feats = data.get("features")
+            if feats is None:
+                entry.update(status="not-wzdx",
+                             detail="200 but no 'features' key — not a WZDx GeoJSON")
+            else:
+                ver = ((data.get("road_event_feed_info") or {})
+                       .get("version", "?"))
+                entry.update(status="live",
+                             detail=f"{len(feats)} active work zone(s), WZDx v{ver}")
+        except urllib.error.HTTPError as exc:
+            entry.update(status="http-error", detail=f"HTTP {exc.code}")
+        except json.JSONDecodeError:
+            entry.update(status="not-json", detail="200 but body is not JSON")
+        except Exception as exc:                                # noqa: BLE001
+            entry.update(status="unreachable",
+                         detail=f"{type(exc).__name__}: {str(exc)[:80]}")
+        results.append(entry)
+        print(f"  {entry['status']:12} {sid:12} {entry['detail']}", flush=True)
+    return results
+
+
 def _write_summary(out_dir: Path, summary: list[dict]) -> None:
     proposed = sum(1 for e in summary if e["proposed"])
     lines = [
@@ -207,7 +272,27 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT,
                         help="proposals directory (never registry/)")
+    parser.add_argument("--check-live", action="store_true",
+                        help="skip discovery; fetch each EXISTING proposal and "
+                             "report whether it still serves WZDx. Narrows the "
+                             "human licence review to feeds that actually work.")
     args = parser.parse_args()
+    if args.check_live:
+        print(f"checking liveness of proposals in {args.out} …", flush=True)
+        res = check_liveness(args.out)
+        live = [r for r in res if r["status"] == "live"]
+        print(f"\n{len(live)}/{len(res)} proposal(s) live.")
+        if live:
+            print("Live and awaiting a LICENCE decision (terms are a human "
+                  "call — see each YAML's licence field):")
+            for r in live:
+                print(f"  {r['state']}  {r['source_id']:12} {r['url']}")
+        dead = [r for r in res if r["status"] != "live"]
+        if dead:
+            print(f"\nNot promotable right now ({len(dead)}):")
+            for r in dead:
+                print(f"  {r['state']}  {r['source_id']:12} {r['status']} — {r['detail']}")
+        return 0
     try:
         summary = discover(fetch_registry_csv(), args.out)
     except Exception as exc:

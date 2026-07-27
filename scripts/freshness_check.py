@@ -101,16 +101,13 @@ def last_runs() -> tuple[dict[str, datetime], dict[str, tuple[str, str]]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--telegram", action="store_true",
-                        help="no-op in MVP; reserved for the alert hook")
+    parser.add_argument("--telegram", "--alert", dest="alert",
+                        action="store_true",
+                        help="send the violation summary to Telegram/ntfy "
+                             "(truckintel.notify). Silent when nothing is "
+                             "violated — a monitor that pings on success "
+                             "trains you to ignore it.")
     args = parser.parse_args()
-
-    if args.telegram:
-        # TODO(post-MVP): send violation summary via Telegram bot API.
-        if not os.environ.get("TELEGRAM_BOT_TOKEN"):
-            print("[--telegram] no TELEGRAM_BOT_TOKEN configured — printing only (TODO: alert hook).")
-        else:
-            print("[--telegram] token present but sending is post-MVP — printing only (TODO: alert hook).")
 
     slos = load_slos()
     if not slos:
@@ -125,25 +122,34 @@ def main() -> int:
         return 2
 
     now = datetime.now(timezone.utc)
-    violations = 0
+    violations: list[str] = []
     for source_id, slo_hours in sorted(slos.items()):
         ok_at = fresh.get(source_id)
         age_h = (now - ok_at).total_seconds() / 3600 if ok_at else None
         status, msg = latest.get(source_id, (None, ""))
         context = f"; last run: {status}" + (f" — {msg}" if msg else "") if status else "; never ran"
         if age_h is None:
-            violations += 1
-            print(f"FRESHNESS VIOLATION {source_id}: no successful run ever"
-                  f" (SLO {slo_hours}h){context}", file=sys.stderr)
+            violations.append(f"{source_id}: no successful run ever "
+                              f"(SLO {slo_hours}h){context}")
+            print(f"FRESHNESS VIOLATION {violations[-1]}", file=sys.stderr)
         elif age_h > slo_hours:
-            violations += 1
-            print(f"FRESHNESS VIOLATION {source_id}: last success {age_h:.1f}h ago"
-                  f" exceeds SLO {slo_hours}h{context}", file=sys.stderr)
+            violations.append(f"{source_id}: last success {age_h:.1f}h ago "
+                              f"exceeds SLO {slo_hours}h{context}")
+            print(f"FRESHNESS VIOLATION {violations[-1]}", file=sys.stderr)
         else:
             print(f"ok {source_id}: last success {age_h:.1f}h ago (SLO {slo_hours}h)")
 
     if violations:
-        print(f"{violations} freshness violation(s)", file=sys.stderr)
+        print(f"{len(violations)} freshness violation(s)", file=sys.stderr)
+        if args.alert:
+            # Delivery failure must not change the exit code: the violation is
+            # what the caller acts on, and reporting "fresh" because the alert
+            # bounced would be the worst possible lie here.
+            from truckintel.notify import deliver, report
+            report(deliver("\n\n".join(violations),
+                           title=f"⚠️ truck-intel: {len(violations)} stale source(s)",
+                           full_text_at="journalctl --user -u truckintel-freshness",
+                           priority="high"))
         return 1
     print("all sources fresh")
     return 0

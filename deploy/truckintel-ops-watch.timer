@@ -1,0 +1,14 @@
+# Every hour. Frequent enough that a broken job is noticed the same working
+# day; the 12-hour per-finding cooldown in ops_watch.py is what stops that
+# frequency from turning into noise a reader learns to ignore.
+[Unit]
+Description=truck-intel ops watchdog timer (hourly)
+
+[Timer]
+OnCalendar=*-*-* *:07:00
+RandomizedDelaySec=5m
+AccuracySec=1m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

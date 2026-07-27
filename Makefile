@@ -217,5 +217,7 @@ install-timers:
 	  truckintel-aaa-prices.timer truckintel-pois.timer \
 	  truckintel-osm-truck-repair.timer truckintel-mechanics.timer \
 	  truckintel-mechanics-daily.timer truckintel-businesses.timer \
-	  truckintel-track-prune.timer truckintel-weekly-digest.timer
+	  truckintel-track-prune.timer truckintel-weekly-digest.timer \
+	  truckintel-ops-watch.timer truckintel-nightly-checks.timer \
+	  truckintel-fuel-verify.timer
 	systemctl --user list-timers 'truckintel-*'

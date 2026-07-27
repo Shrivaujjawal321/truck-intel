@@ -1,0 +1,29 @@
+# truck-intel weekly fuel verification + enrichment.
+#
+# fuel_verify confirms each OSM fuel station against Overture — a source
+# INDEPENDENT of OpenStreetMap. That independence is the whole point: a station
+# corroborated only by the dataset it came from is not corroborated.
+#
+# fuel_enrich then attaches name/address/phone/website/hours and the regional
+# diesel price to the verified stations.
+#
+# Both were Makefile targets with no schedule, so verification decayed silently
+# as OSM changed underneath it — the flags kept saying 'verified' about a
+# matching that was months old.
+#
+# Order matters: enrich needs verify to have run.
+[Unit]
+Description=truck-intel weekly fuel verification + enrichment
+After=network-online.target docker.service truckintel-pois.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+# fuel_verify scans the 11 GB Overture mirror then matches 108k stations (~40
+# min measured); enrich follows. The ceiling is for a slow upstream.
+TimeoutStartSec=3h
+ExecStart=%h/.local/bin/uv run python scripts/fuel_verify.py
+ExecStart=%h/.local/bin/uv run python scripts/fuel_enrich.py
+Nice=15
+IOSchedulingClass=idle

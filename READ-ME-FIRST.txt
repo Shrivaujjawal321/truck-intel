@@ -1,0 +1,59 @@
+truck-intel — folder archive, 2026-07-27
+========================================
+
+This is the working folder, minus three download caches. Everything else is
+here: full source, complete git history, CI config, systemd units, schema.
+
+WHAT WAS LEFT OUT (49 GB, all re-downloadable, none of it unique)
+    data/pbf/               38 GB   Geofabrik US OSM extract + node caches
+    data/overture_places/   11 GB   Overture Places parquet mirror
+    data/raw/              936 MB   content-addressed source downloads
+
+  Nothing references them by hand — the jobs fetch what they need:
+    scripts/osm_pois_refresh.py   re-fetches the PBF (md5-conditional)
+    scripts/overture_fetch.sh     re-mirrors Overture Places
+    the engine (`make tick`)      re-fetches everything registry-driven
+
+  data/config/ and data/curated/ ARE included — the code reads them at
+  startup and would fail without them.
+
+  .env is NOT here (secrets). Copy .env.example to .env and fill it in.
+  You need CONTACT_EMAIL set; EIA_API_KEY is optional (its connector records
+  status='skipped_no_key' rather than crashing).
+
+ABOUT .venv/
+  Included, but it is pinned to absolute paths on the machine that built it
+  and will NOT work anywhere else. Delete it and run `uv sync` — takes about
+  a minute and uses the committed uv.lock, so you get identical versions.
+
+RUNNING IT
+    rm -rf .venv && uv sync
+    cp .env.example .env        # then edit CONTACT_EMAIL
+    make db-up                  # PostGIS 16 + 3.4 in Docker
+    make schema schema-phase2 schema-routes schema-wave2 schema-tracking
+    make sync                   # registry/*.yaml -> ops.sources
+    make tick                   # fetch whatever is due (repeat, or run the timer)
+    make viewer                 # http://127.0.0.1:8000/viewer
+
+  The map is empty until data is ingested. The heavy layers take a while:
+  NTAD truck routes ~10 min, OSM POIs a 12 GB download, Overture Places 11 GB.
+
+CHECKING IT
+    make ci-fast        # no database, ~16 s
+    make ci             # full suite, ~6 min (608 tests)
+    make pipeline-smoke # checks the SCHEDULED pipeline, not just the code
+
+SCHEDULING
+    make install-timers # 11 systemd user timers; see deploy/README.md
+
+READ FIRST
+    README.md            what this is and what the data means
+    deploy/README.md     every timer, its cadence, and why that cadence
+    .github/workflows/ci.yml   what CI runs
+
+  The honesty rules are not decoration: NULL means unknown, never "no".
+  observed_at is when the data was true upstream, never when it was loaded.
+  Read those sections before quoting any figure out of this system.
+
+REPO
+    https://github.com/Shrivaujjawal321/truck-intel

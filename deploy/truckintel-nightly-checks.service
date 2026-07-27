@@ -1,0 +1,33 @@
+# truck-intel nightly self-checks — the three that had no schedule at all.
+#
+#   route_rebuild --check   is the routable graph behind core.truck_routes?
+#                           The engine hook now rebuilds on every routes swap,
+#                           but a hook can only fire if it was reached; this is
+#                           the independent confirmation that it was.
+#   pipeline_smoke          do the UNIT FILES still match reality — every
+#                           ExecStart resolves, every flag is one the script
+#                           accepts, every timer installed AND enabled, every
+#                           dataset producing recent successful runs.
+#   verify_claims           do the figures published in README/viewer still
+#                           match what the database actually holds?
+#
+# All three are read-only. They existed as Makefile targets that a human had to
+# remember to run, which is the same as not existing.
+#
+# `|| true` on each: one failing check must not hide the other two. Every one
+# prints its own verdict, and ops_watch is what escalates. This unit's job is
+# to make sure they RUN, not to gate on them.
+[Unit]
+Description=truck-intel nightly self-checks (graph staleness, pipeline, published claims)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+TimeoutStartSec=1h
+ExecStart=/bin/sh -c '%h/.local/bin/uv run python scripts/route_rebuild.py --check || true'
+ExecStart=/bin/sh -c '%h/.local/bin/uv run python scripts/pipeline_smoke.py || true'
+ExecStart=/bin/sh -c '%h/.local/bin/uv run python scripts/verify_claims.py || true'
+Nice=10
+IOSchedulingClass=idle

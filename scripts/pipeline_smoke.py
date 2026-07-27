@@ -57,6 +57,9 @@ EXPECTED_UNITS = {
     "truckintel-businesses": timedelta(days=40),
     "truckintel-weekly-digest": timedelta(days=9),
     "truckintel-track-prune": timedelta(days=2),
+    "truckintel-ops-watch": timedelta(hours=3),
+    "truckintel-nightly-checks": timedelta(days=2),
+    "truckintel-fuel-verify": timedelta(days=9),
 }
 
 # The data Boss named: "daily fuel prize update ho, truck routes, mechanic

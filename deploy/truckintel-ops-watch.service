@@ -1,0 +1,25 @@
+# truck-intel ops watchdog — the alert the freshness SLO cannot raise.
+#
+# freshness_check answers "is the DATA old?". A source can fail every run and
+# still sit inside its SLO, because the last good publish is recent enough.
+# Measured 2026-07-27: osm_pois had failed 5 times in 7 days while freshness
+# reported PASS throughout, and osm_ways 10 times. Nobody knew.
+#
+# This checks repeated failures, never-succeeded sources, stuck 'running' rows,
+# sources whose alerting is disarmed (enabled=false but still running), and a
+# queue that stopped draining — then sends to Telegram/ntfy.
+#
+# Exit 1 means "found something new", which is information, not a unit failure:
+# SuccessExitStatus keeps systemd from marking the unit failed for doing its job.
+[Unit]
+Description=truck-intel ops watchdog (repeated failures, stuck jobs, disarmed alerting)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+TimeoutStartSec=10m
+ExecStart=%h/.local/bin/uv run python scripts/ops_watch.py
+SuccessExitStatus=0 1
+Nice=10

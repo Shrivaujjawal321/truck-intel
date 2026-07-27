@@ -1,0 +1,15 @@
+# 03:50 local — after the nightly quality pass (03:30) so it checks the state
+# that pass leaves behind, and well before the morning data jobs (04:45 OSM,
+# 05:00 mechanics, 06:15 prices) so a finding is waiting when Boss wakes up
+# rather than landing mid-refresh.
+[Unit]
+Description=truck-intel nightly self-checks timer (03:50 local)
+
+[Timer]
+OnCalendar=*-*-* 03:50:00
+RandomizedDelaySec=10m
+AccuracySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

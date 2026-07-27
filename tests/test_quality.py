@@ -470,13 +470,20 @@ def test_claim_jobs_dispatches_only_known_derived_sources():
     derived source without a runner is finished 'failed' with an honest
     message — never left claimed forever, never faked 'done'."""
     qn = _load_nightly()
+    # Skip if ANY real derived job is pending, not just a rescore. claim_jobs
+    # drains whatever it finds, and since 2026-07-27 the queue can also hold
+    # `route_rebuild` — whose runner is a ~50-minute graph rebuild. A test that
+    # consumes a production job is bad enough; one that consumes THAT job runs
+    # it under pytest.
     with get_conn() as conn:
         pending = conn.execute(
-            "SELECT 1 FROM ops.job_queue WHERE source_id = %s "
-            "AND status IN ('queued', 'running')", (qn.RESCORE_SOURCE_ID,),
+            "SELECT source_id FROM ops.job_queue "
+            "WHERE status IN ('queued', 'running') "
+            "  AND source_id NOT LIKE %s LIMIT 1", (r"\_%",),
         ).fetchone()
     if pending:
-        pytest.skip("a real quality_rescore job is pending — not consuming it here")
+        pytest.skip(f"a real derived job is pending ({pending[0]}) — "
+                    "not consuming it here")
     try:
         with get_conn() as conn:
             conn.execute(

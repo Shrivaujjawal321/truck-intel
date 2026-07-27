@@ -26,8 +26,17 @@ DERIVED_SRC = "_test_wave2_derived"
 # ------------------------------------------------- allow-list: the contract
 
 def test_derived_runner_allowlist_is_the_exact_contract():
+    """The EXACT map, not just membership: this allow-list is what stops an
+    arbitrary source_id becoming a subprocess argv, so growing it must be a
+    deliberate edit here — never a side effect of a change elsewhere.
+
+    route_rebuild joined on 2026-07-27 with the truck_routes post-swap hook.
+    """
     assert engine._DERIVED_RUNNERS == {
         "quality_rescore": ["scripts/quality_nightly.py", "--rescore", "all"],
+        # Enqueued by the publish hook when core.truck_routes swaps; --if-stale
+        # so an unchanged network is not rebuilt for 50 minutes.
+        "route_rebuild": ["scripts/route_rebuild.py", "--if-stale"],
         "osm_pois": ["scripts/osm_extract.py", "--job", "pois"],
         "osm_ways": ["scripts/osm_extract.py", "--job", "ways"],
         # businesses rebuild chain: the two pulls + the conflate. Every seeded

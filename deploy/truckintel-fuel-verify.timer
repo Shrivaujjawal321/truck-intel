@@ -1,0 +1,14 @@
+# Sundays 06:00 — four hours after the weekly OSM POI refresh (02:00) so it
+# verifies the stations that refresh just published, not last week's. Clear of
+# the daily jobs, and heavy work lands when nothing else wants the disk.
+[Unit]
+Description=truck-intel weekly fuel verify+enrich timer (Sun 06:00 local)
+
+[Timer]
+OnCalendar=Sun *-*-* 06:00:00
+RandomizedDelaySec=30m
+AccuracySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

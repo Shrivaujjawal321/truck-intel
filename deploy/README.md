@@ -17,6 +17,9 @@ on the host (PostGIS runs in Docker via `scripts/db_up.sh`).
 | `truckintel-mechanics-daily.service` + `.timer` | mechanic **detail**: licence registries + chain hours + OSM corroboration + re-verify + coverage + fill report + HTML | daily 05:00 |
 | `truckintel-mechanics.service` + `.timer` | mechanic **discovery**: Overture Places truck categories → `core.mechanic_shops` (then every daily stage) | monthly, 2nd @ 05:00 |
 | `truckintel-track-prune.service` + `.timer` | delete tracking pings past the retention window | daily 03:10 |
+| `truckintel-ops-watch.service` + `.timer` | repeated failures, never-succeeded sources, stuck runs, disarmed alerting, queue backlog → Telegram/ntfy | hourly |
+| `truckintel-nightly-checks.service` + `.timer` | route-graph staleness + pipeline smoke + published-claim drift | daily 03:50 |
+| `truckintel-fuel-verify.service` + `.timer` | fuel verification against a non-OSM source, then enrichment | Sundays 06:00 |
 | `truckintel-api.service` | uvicorn `api.main:app` on 127.0.0.1:8000 | long-running |
 
 ### Fuel freshness: what "daily" actually covers
@@ -120,6 +123,42 @@ To keep everything running after logout / across reboots without a login session
 ```bash
 loginctl enable-linger "$USER"
 ```
+
+### Two watchers, because they answer different questions
+
+`truckintel-freshness` asks **"is the DATA old?"** — the SLO question.
+
+`truckintel-ops-watch` asks **"is the JOB working?"** — and a source can fail
+every single run while its last good publish is still inside the SLO. Measured
+2026-07-27: `osm_pois` had failed 5 times in 7 days and `osm_ways` 10 times,
+with freshness reporting PASS throughout. Neither was noticed until a smoke
+test was run by hand.
+
+Both now deliver through `truckintel/notify.py` (Telegram + ntfy). Before this,
+`freshness_check --telegram` was a documented no-op whose implementation was
+the comment *"sending is post-MVP — printing only (TODO: alert hook)"*. A
+monitor that prints into a journal nobody reads is not a monitor.
+
+ops-watch keeps a **12-hour per-finding cooldown** in
+`data/ops_watch_state.json`. An hourly watchdog on a persistently broken source
+otherwise becomes a notification you learn to swipe away, which is worse than
+silence. Findings still true but suppressed are counted in the message, never
+dropped.
+
+### Derived rebuilds now follow their source
+
+`core.truck_routes` refreshes weekly through the engine. Five things are
+derived from it — `route.edges`, `route.node_component`, `route_snap_index`,
+`route.edge_limits`, `viewer_generalized` — and **none were rebuilt when it
+changed**. A new NTAD vintage would land and the router would keep answering
+from a graph built on the previous network: no error, no failed run, no stale
+alert, because every *source* was fresh. Only the derivatives were wrong.
+
+A successful swap of `core.truck_routes` now enqueues `route_rebuild` in the
+same transaction as the publish (same hook `quality_rescore` has always used).
+It runs `--if-stale`, so a swap that republished an unchanged network does not
+spend 50 minutes rebuilding an identical graph. The nightly checks re-assert
+staleness independently — a hook can only fire if it was reached.
 
 ## Prove it works — without waiting a day
 

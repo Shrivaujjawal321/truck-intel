@@ -153,6 +153,9 @@ def record_feed_health(conn: psycopg.Connection, source_id: str, *, ok: bool) ->
 # jobs — see jobs.claim_job).
 # ---------------------------------------------------------------------------
 RESCORE_SOURCE_ID = "quality_rescore"  # seeded in sql/schema_phase2.sql
+# Seeded by scripts/route_rebuild.py itself on first run (it is not in any
+# registry YAML — it is derived work, triggered by a publish, never scheduled).
+ROUTE_REBUILD_SOURCE_ID = "route_rebuild"
 
 _RESCORE_ENQUEUE_SQL = (
     "INSERT INTO ops.job_queue (source_id) VALUES (%s) "
@@ -666,6 +669,17 @@ def _execute(src: dict, run_id: int) -> None:
             # rescore job (same transaction as the publish — they land or
             # roll back together).
             enqueue_rescore(conn)
+            # A swap of the ROUTE SPINE additionally invalidates everything
+            # derived from it: the routable graph, its connectivity labels,
+            # the snap index, per-edge limits and the map's low-zoom geometry.
+            # None of those were rebuilt before 2026-07-27, so a new NTAD
+            # vintage left the router answering from the PREVIOUS network with
+            # no error, no failed run and no stale-data alert — every source
+            # was fresh; only the derivatives were wrong.
+            # Enqueued, not run inline: the rebuild is ~50 minutes and must not
+            # hold the publish transaction open.
+            if _resolve_snapshot_target(src) == "core.truck_routes":
+                enqueue_rescore(conn, ROUTE_REBUILD_SOURCE_ID)
         elif load_pattern == "event_lifecycle":
             published = event_lifecycle_upsert(
                 conn, ok_rows, source_id=source_id, run_id=run_id
@@ -706,6 +720,10 @@ _SCRIPTS_DIR = _REPO_ROOT / "scripts"
 
 _DERIVED_RUNNERS: dict[str, list[str]] = {
     RESCORE_SOURCE_ID: ["scripts/quality_nightly.py", "--rescore", "all"],
+    # --if-stale, not a bare rebuild: the hook fires on every truck_routes
+    # swap, and a swap that republished an unchanged network would otherwise
+    # cost 50 minutes to rebuild an identical graph.
+    ROUTE_REBUILD_SOURCE_ID: ["scripts/route_rebuild.py", "--if-stale"],
     "osm_pois": ["scripts/osm_extract.py", "--job", "pois"],
     "osm_ways": ["scripts/osm_extract.py", "--job", "ways"],
     # businesses rebuild chain (ruling §3.1-6): the two pulls refill their own
