@@ -13,8 +13,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from httpx import ASGITransport, AsyncClient
 
+from tests.conftest import needs_data
 from api import common
 from api.main import app
 from api.routes_tiles import LAYERS, _cluster_sql, _filter_clause, _tile_sql
@@ -22,6 +24,13 @@ from truckintel.route_assign import ON_ROUTE_M
 
 # Layers Boss asked to be truck-route-only (2026-07-26).
 SERVICE_LAYERS = ("fuel_stations", "mechanic_shops")
+
+
+# These are integration tests over the LOADED route network, not unit
+# tests: they assert that real rows match, draw and generalize correctly.
+# On a clean CI container the schema exists but holds no routes, so they
+# skip rather than fail for a reason that says nothing about the code.
+pytestmark = needs_data
 
 
 def _get(path: str):

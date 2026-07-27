@@ -15,8 +15,10 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
 from httpx import ASGITransport, AsyncClient
 
+from tests.conftest import needs_data
 from api import common, routes_track
 from api.main import app
 from api.routes_track import (
@@ -29,6 +31,13 @@ from api.routes_track import (
 from truckintel.db import get_conn
 
 DEVICE = "pytest-track-1"
+
+
+# These are integration tests over the LOADED route network, not unit
+# tests: they assert that real rows match, draw and generalize correctly.
+# On a clean CI container the schema exists but holds no routes, so they
+# skip rather than fail for a reason that says nothing about the code.
+pytestmark = needs_data
 
 
 def _call(method: str, path: str, **kw):

@@ -12,8 +12,10 @@ import asyncio
 from dataclasses import replace
 
 import pytest
+
 from httpx import ASGITransport, AsyncClient
 
+from tests.conftest import needs_data
 from api import common
 from api.main import app
 from api.routes_tiles import CLUSTER_CELLS, LAYERS, Layer, _tile_sql
@@ -22,6 +24,13 @@ from api.routes_tiles import CLUSTER_CELLS, LAYERS, Layer, _tile_sql
 DENSE_TILE = (4, 4, 6)
 # A z11 tile over Dallas: past every cluster threshold, so raw rows are served.
 DETAIL_TILE = (11, 470, 822)
+
+
+# These are integration tests over the LOADED route network, not unit
+# tests: they assert that real rows match, draw and generalize correctly.
+# On a clean CI container the schema exists but holds no routes, so they
+# skip rather than fail for a reason that says nothing about the code.
+pytestmark = needs_data
 
 
 def _get(path: str):
