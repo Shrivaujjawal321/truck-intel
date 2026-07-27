@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 schema-wave2 schema-viewer schema-tracking route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers
+.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers
 
 db-up:
 	./scripts/db_up.sh
@@ -11,6 +11,14 @@ schema:
 # Phase-2 additive schema (idempotent; requires `make schema` applied first)
 schema-phase2:
 	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_phase2.sql
+
+# core.truck_routes and friends — the truck-designated route spine.
+# This had NO target until 2026-07-27; it was applied by hand, so a fresh
+# database built from the Makefile alone was missing core.truck_routes and
+# schema_tracking.sql then failed on the dangling reference. CI on a clean
+# PostGIS container is what surfaced it.
+schema-routes:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_routes.sql
 
 # Wave-2 additive schema (idempotent; requires schema + schema-phase2 first)
 schema-wave2:
@@ -173,10 +181,10 @@ mechanics-fill:
 	uv run python scripts/mechanic_list.py --fill-report
 
 # ------------------------------------------------------------------------ CI
-# `make ci` is the real gate on this project: there is no git remote yet, so
-# the GitHub Actions workflow in .github/workflows/ci.yml cannot run and the
-# local target is what actually protects main. Keep the two in step — the
-# workflow runs these same steps in the same order.
+# The local gate. .github/workflows/ci.yml runs these same steps in the same
+# order on every push, so keep the two in step — a change to one that is not
+# mirrored in the other means CI and your laptop disagree about what "passing"
+# means, and the disagreement will surface at the worst moment.
 #
 # Split into fast/slow deliberately. `ci-fast` needs no database and finishes in
 # seconds, so it is the one worth running before every commit; `ci` adds the

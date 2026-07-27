@@ -1,10 +1,15 @@
 # truck-intel CI.
 #
-# STATUS, HONESTLY: this repo has no git remote yet (`git remote -v` is empty
-# as of 2026-07-27), so nothing here has ever executed on GitHub. It is written
-# to be correct on the day a remote is added, and `make ci` runs the same steps
-# in the same order locally in the meantime. THAT is the gate protecting main
-# today — do not read a green badge into this file, there isn't one.
+# This ran for the first time on 2026-07-27, the day the repo got a remote, and
+# it failed twice before going green — both times on real defects it was the
+# first thing to notice:
+#   1. a folded YAML scalar put a line-continuation backslash mid-statement
+#   2. schema_tracking.sql referenced core.truck_routes, whose schema file had
+#      no Makefile target and had only ever been applied by hand
+# The second one only appears on a database built from the repo alone, which is
+# the whole argument for a clean container every run.
+#
+# `make ci` runs the same steps in the same order locally — keep the two in step.
 #
 # The two jobs are split by what they need:
 #   fast   — no database, seconds. Everything that can fail without PostGIS.
@@ -108,10 +113,16 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      # Order is a dependency chain, not a preference: schema_tracking.sql
+      # references core.truck_routes, which only schema_routes.sql creates.
+      # That file had no Makefile target at all until 2026-07-27 — it was
+      # applied by hand — so a database built from the repo alone was missing
+      # it and this step failed on the dangling reference. Building on a clean
+      # container every run is precisely what surfaced it.
       - name: Apply schema
         run: |
-          for f in sql/schema.sql sql/schema_phase2.sql sql/schema_wave2.sql \
-                   sql/schema_tracking.sql; do
+          for f in sql/schema.sql sql/schema_phase2.sql sql/schema_routes.sql \
+                   sql/schema_wave2.sql sql/schema_tracking.sql; do
             echo "--- $f"
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
           done
