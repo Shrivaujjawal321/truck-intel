@@ -1,0 +1,209 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>truck-intel · send my position</title>
+<!--
+  The driver's end of the tracking loop. A page, not an app: browser geolocation
+  is the same GPS an app would read, and nothing needs installing, updating, or
+  app-store approval to put a truck on the map.
+
+  Honesty rules this page follows, because a driver has to trust it:
+  * It says plainly that it shares location, with whom, and while which screen is
+    open. No background tracking is possible from a web page and it does not
+    imply otherwise.
+  * Every send reports what the server actually said. A failed ping shows the
+    error code, not a green tick.
+  * The token lives in this device's localStorage only, so a reload does not
+    require re-typing it — and "Forget" wipes it.
+-->
+<style>
+  :root { color-scheme: dark;
+    --bg:#0b1220; --panel:#111a2b; --line:#1f2b40; --text:#e2e8f0;
+    --dim:#94a3b8; --faint:#64748b; --ok:#34d399; --bad:#f87171; --accent:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    padding:max(16px, env(safe-area-inset-top)) 16px 24px; }
+  h1 { font-size:19px; margin:0 0 4px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:14px; margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--dim); margin-bottom:5px;
+    text-transform:uppercase; letter-spacing:.04em; }
+  input { width:100%; padding:12px; border-radius:9px; border:1px solid var(--line);
+    background:#0d1526; color:var(--text); font-size:16px; /* 16px: iOS zooms below it */
+    font-family:ui-monospace, monospace; }
+  input + label { margin-top:12px; }
+  button { width:100%; padding:15px; border-radius:10px; border:0; font-size:16px;
+    font-weight:600; margin-top:14px; cursor:pointer; }
+  .go { background:var(--accent); color:#06121d; }
+  .stop { background:#7f1d1d; color:#fee2e2; }
+  .ghost { background:transparent; color:var(--faint); border:1px solid var(--line);
+    font-weight:400; font-size:13px; padding:10px; }
+  .stat { display:flex; justify-content:space-between; gap:12px; padding:7px 0;
+    border-bottom:1px solid var(--line); font-size:14px; }
+  .stat:last-child { border-bottom:0; }
+  .stat span { color:var(--dim); }
+  .stat b { font-variant-numeric:tabular-nums; font-weight:600; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .log { font-family:ui-monospace, monospace; font-size:11.5px; color:var(--faint);
+    white-space:pre-wrap; max-height:170px; overflow-y:auto; margin:0; }
+  .note { font-size:12px; color:var(--faint); line-height:1.55; }
+</style>
+
+<h1>Send my position</h1>
+<div class="sub">This phone becomes a live marker on the truck-intel map.</div>
+
+<div class="card" id="setup">
+  <label for="dev">Device id</label>
+  <input id="dev" placeholder="truck-14" autocapitalize="off" autocorrect="off" spellcheck="false" />
+  <label for="tok">Token</label>
+  <input id="tok" type="password" placeholder="issued by track_device.py add" autocomplete="off" />
+  <label for="api">Server</label>
+  <input id="api" placeholder="http://127.0.0.1:8000" autocapitalize="off" spellcheck="false" />
+  <button class="go" id="start">Start sharing</button>
+  <button class="ghost" id="forget">Forget this device on this phone</button>
+</div>
+
+<div class="card" id="running" hidden>
+  <div class="stat"><span>state</span><b id="s-state">—</b></div>
+  <div class="stat"><span>last fix</span><b id="s-fix">—</b></div>
+  <div class="stat"><span>accuracy</span><b id="s-acc">—</b></div>
+  <div class="stat"><span>speed</span><b id="s-speed">—</b></div>
+  <div class="stat"><span>nearest truck route</span><b id="s-route">—</b></div>
+  <div class="stat"><span>sent / refused</span><b id="s-count">0 / 0</b></div>
+  <button class="stop" id="stop">Stop sharing</button>
+</div>
+
+<div class="card">
+  <label>Activity</label>
+  <pre class="log" id="log">idle</pre>
+</div>
+
+<div class="card note">
+  While this screen is open, your device sends its GPS position to the server you
+  entered above. Closing the tab or locking the phone for long enough stops it —
+  a web page cannot track you in the background, and this one does not try.
+  Position data is kept for a limited window, not forever.
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+// The server rate-limits to one ping per 5 s per device; 10 s stays clear of it
+// while still being genuinely live (a truck at 100 km/h moves ~280 m).
+const SEND_MS = 10000;
+const LS = 'truckintel.track';
+
+let watchId = null, timer = null, sent = 0, refused = 0, lastFix = null;
+
+function log(msg, cls) {
+  const t = new Date().toTimeString().slice(0, 8);
+  const el = $('log');
+  el.textContent = `${t}  ${msg}\n` + (el.textContent === 'idle' ? '' : el.textContent);
+  if (cls) el.className = 'log ' + cls;
+}
+
+(function restore() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS) || '{}');
+    $('dev').value = s.dev || '';
+    $('tok').value = s.tok || '';
+    $('api').value = s.api || location.origin;
+  } catch { $('api').value = location.origin; }
+})();
+
+$('forget').onclick = () => {
+  localStorage.removeItem(LS);
+  $('dev').value = ''; $('tok').value = '';
+  log('device + token cleared from this phone');
+};
+
+$('start').onclick = () => {
+  const dev = $('dev').value.trim(), tok = $('tok').value.trim();
+  const api = ($('api').value.trim() || location.origin).replace(/\/+$/, '');
+  if (!dev || !tok) { log('device id and token are both required', 'bad'); return; }
+  if (!('geolocation' in navigator)) {
+    log('this browser has no geolocation API — nothing to send', 'bad'); return;
+  }
+  localStorage.setItem(LS, JSON.stringify({ dev, tok, api }));
+  $('setup').hidden = true; $('running').hidden = false;
+  $('s-state').textContent = 'waiting for GPS'; $('s-state').className = '';
+  log(`starting · ${dev} -> ${api}`);
+
+  // watchPosition keeps a warm GPS fix; the timer decides how often one is SENT.
+  // Sending on every OS callback would burst straight into the rate limiter.
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      lastFix = pos;
+      $('s-acc').textContent = pos.coords.accuracy != null
+        ? `${pos.coords.accuracy.toFixed(0)} m` : 'unknown';
+      $('s-speed').textContent = pos.coords.speed != null
+        ? `${(pos.coords.speed * 3.6).toFixed(0)} km/h` : 'unknown';
+    },
+    err => {
+      // Permission denied is terminal; a timeout is not, so they read differently.
+      $('s-state').textContent = 'GPS error'; $('s-state').className = 'bad';
+      log(`GPS: ${err.message}`, 'bad');
+      if (err.code === err.PERMISSION_DENIED) stop();
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+  );
+  send();
+  timer = setInterval(send, SEND_MS);
+};
+
+$('stop').onclick = stop;
+
+function stop() {
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  clearInterval(timer);
+  watchId = timer = null;
+  $('setup').hidden = false; $('running').hidden = true;
+  log('stopped — no more positions are being sent');
+}
+
+async function send() {
+  if (!lastFix) { log('no GPS fix yet — nothing sent'); return; }
+  const s = JSON.parse(localStorage.getItem(LS) || '{}');
+  const c = lastFix.coords;
+  const body = {
+    device_id: s.dev, token: s.tok,
+    lat: c.latitude, lon: c.longitude,
+    // The device's own fix time, so the server can report a true age instead of
+    // treating arrival as "now".
+    observed_at: new Date(lastFix.timestamp).toISOString(),
+    speed_kph: c.speed != null ? +(c.speed * 3.6).toFixed(1) : null,
+    heading_deg: (c.heading != null && !Number.isNaN(c.heading)) ? c.heading : null,
+    accuracy_m: c.accuracy != null ? +c.accuracy.toFixed(1) : null
+  };
+  try {
+    const r = await fetch(`${s.api}/v1/track/ping`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      // Show what the server actually refused, with its code. A red tick beats a
+      // green one that means nothing.
+      refused++;
+      $('s-state').textContent = `refused (${r.status})`;
+      $('s-state').className = 'bad';
+      log(`${r.status} ${j?.error?.code || ''} — ${j?.error?.message || 'refused'}`, 'bad');
+    } else {
+      sent++;
+      $('s-state').textContent = j.duplicate ? 'duplicate fix' : 'sharing';
+      $('s-state').className = 'ok';
+      $('s-fix').textContent = new Date(body.observed_at).toTimeString().slice(0, 8);
+      $('s-route').textContent = j.route_ref
+        ? `${j.route_ref} · ${j.route_dist_m} m off` : 'unknown';
+      log(`sent ${body.lat.toFixed(5)}, ${body.lon.toFixed(5)}` +
+          (j.route_ref ? ` · ${j.route_ref} ${j.route_dist_m} m` : ''), 'ok');
+    }
+  } catch (e) {
+    refused++;
+    $('s-state').textContent = 'no connection'; $('s-state').className = 'bad';
+    log(`network: ${e.message}`, 'bad');
+  }
+  $('s-count').textContent = `${sent} / ${refused}`;
+}
+</script>

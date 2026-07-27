@@ -1,0 +1,17 @@
+# Fires truckintel-mechanics.service monthly, 2nd at 05:00 local.
+#
+# The 2nd, not the 1st: truckintel-businesses.timer already runs an Overture pull
+# on the 1st at 04:30, and two national parquet scans competing for the same disk
+# is how a laptop-hosted pipeline falls over. A day later also means the month's
+# Overture release is reliably published.
+[Unit]
+Description=truck-intel monthly truck-mechanic refresh timer (2nd @ 05:00 local)
+
+[Timer]
+OnCalendar=*-*-02 05:00:00
+RandomizedDelaySec=30m
+AccuracySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

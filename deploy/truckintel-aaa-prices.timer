@@ -1,0 +1,24 @@
+# Fires truckintel-aaa-prices.service once a day at 06:15 local.
+#
+# Why 06:15: AAA's averages are refreshed overnight by OPIS, so an early-morning
+# read gets the day's number before a driver plans a run. It also sits clear of
+# the nightly quality pass (03:30) and the monthly businesses rebuild (04:30),
+# so the price fetch never competes with a heavy job for disk.
+#
+# RandomizedDelaySec spreads the request rather than hitting their edge on the
+# stroke of the hour with everyone else's scheduler.
+#
+# Persistent=true: if the laptop was off at 06:15, fetch on next boot instead of
+# silently skipping the day — a missing day is exactly what the freshness SLO is
+# there to catch, and it should be caught by the data, not by luck.
+[Unit]
+Description=truck-intel AAA daily diesel price timer (06:15 local)
+
+[Timer]
+OnCalendar=*-*-* 06:15:00
+RandomizedDelaySec=20m
+AccuracySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

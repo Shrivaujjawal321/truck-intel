@@ -4,6 +4,31 @@
 # first live run).
 # HONESTY: regional weekly averages (US, PADDs, sub-PADDs, CA only for diesel) —
 # NEVER station-level pump prices; the API labels them "regional_weekly_estimate".
+#
+# WHY NOT AAA (asked 2026-07-24, decided against — recorded so it is not re-argued):
+#   AAA's data is genuinely better on every axis that matters to a driver:
+#     update    daily (AAA) vs weekly Monday ~17:00 ET (EIA)
+#     sample    up to 120,000 stations/day via OPIS + WEX (AAA) vs ~590 diesel
+#               outlets surveyed each Monday (EIA)
+#     geography national + state + metro (AAA) vs 11 regions (EIA)
+#   It is nevertheless unusable here, and the reason is COPYRIGHT, not robots.txt.
+#   gasprices.aaa.com/robots.txt disallows only /wp-admin/ with Crawl-delay: 10 —
+#   recording "robots.txt forbids it" would be a false statement of fact.
+#   The blocker is gasprices.aaa.com/about-aaa, verbatim:
+#     "Users may not reproduce, distribute, create derivative works, display,
+#      modify, archive or otherwise exploit any or all portions of this website."
+#     "Users are granted a limited license to retrieve or print a copy of content
+#      on this website for personal, non-commercial use only..."
+#     "Any commercial use or exploitation of protected content is strictly
+#      prohibited."   (c) Oil Price Information Service / AAA
+#   Storing prices in a database is "archive"; serving them is "distribute". Both
+#   are named. The lawful route to daily station-level prices is a commercial
+#   licence from OPIS (opis.com) — the outfit that supplies AAA — not scraping AAA.
+#
+# COVERAGE CHECK (2026-07-24, live API call): EIA publishes diesel for exactly the
+# 11 geographies we already ingest (NUS, R10, R1X, R1Y, R1Z, R20, R30, R40, R50,
+# R5XCA, SCA). There is no state-level EIA diesel series to add — we are already
+# taking 100% of what this source offers for diesel.
 # Key handling: EIA_API_KEY absent from .env -> the connector writes one
 # ops.source_runs row with status='skipped_no_key' and a clear message. No crash.
 id: eia_diesel

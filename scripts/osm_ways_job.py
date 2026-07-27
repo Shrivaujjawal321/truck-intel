@@ -327,7 +327,7 @@ def _spool_ways(pbf_path: Path, workdir: Path, *,
             if progress_every and kept % progress_every == 0:
                 print(f"osm_ways pass: scanned={scanned:,} kept={kept:,} "
                       f"({time.monotonic() - t0:,.0f}s)", flush=True)
-    return {
+    stats = {
         "spool": spool_path,
         "scanned": scanned,
         "kept": kept,
@@ -335,6 +335,47 @@ def _spool_ways(pbf_path: Path, workdir: Path, *,
         "skipped_class": skipped_class,
         "pass_seconds": round(time.monotonic() - t0, 1),
     }
+    # Written LAST, after the gzip is closed and only on a clean return: the
+    # manifest's EXISTENCE is the completion marker. `with gzip.open(...)`
+    # closes cleanly even when the pass dies mid-way, so an aborted run leaves
+    # a structurally valid gzip that is indistinguishable from a finished one
+    # by inspection alone — and replaying it would publish a partial national
+    # dataset over a good table, reporting success.
+    _write_manifest(workdir, stats, pbf_path)
+    return stats
+
+
+MANIFEST_NAME = "manifest.json"
+
+
+def _write_manifest(workdir: Path, stats: dict, pbf_path: Path) -> None:
+    (workdir / MANIFEST_NAME).write_text(json.dumps({
+        "complete": True,
+        "kept": stats["kept"],
+        "scanned": stats["scanned"],
+        "skipped_geom": stats["skipped_geom"],
+        "skipped_class": stats["skipped_class"],
+        "pass_seconds": stats["pass_seconds"],
+        "spool_bytes": stats["spool"].stat().st_size,
+        "pbf_name": pbf_path.name,
+        "pbf_bytes": pbf_path.stat().st_size,
+    }, indent=2) + "\n", encoding="utf-8")
+
+
+def load_spool_manifest(spool_path: Path) -> dict | None:
+    """The completion manifest beside a spool, or None if absent/unreadable.
+
+    None means 'this spool cannot be shown to be complete' — never 'it is
+    fine'. Callers must treat None as a refusal, not a default.
+    """
+    path = spool_path.parent / MANIFEST_NAME
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return data if isinstance(data, dict) and data.get("complete") else None
 
 
 def _rows_from_spool(spool_path: Path,
@@ -552,12 +593,64 @@ def _count_spool_lines(spool_path: Path) -> int:
     return total
 
 
+class IncompleteSpool(RuntimeError):
+    """A --from-spool workdir cannot be shown to hold a COMPLETED phase A."""
+
+
+def _verify_resumed_spool(spool_path: Path, *,
+                          accept_unverified: bool = False) -> int | None:
+    """Refuse a spool that cannot be shown to be a complete phase A.
+
+    Returns the manifest's kept count (None when the operator has explicitly
+    accepted an unverified spool).
+
+    Two distinct failures this catches, both of which otherwise publish a
+    PARTIAL national dataset over a good table and record status='success':
+    * no manifest — an aborted pass, or one from before manifests existed;
+    * size mismatch — the spool was truncated after phase A finished.
+    """
+    manifest = load_spool_manifest(spool_path)
+    if manifest is None:
+        if accept_unverified:
+            print(f"osm_ways: WARNING — {spool_path} has no completion "
+                  f"manifest; proceeding only because "
+                  f"--accept-unverified-spool was given. If phase A was "
+                  f"interrupted this publishes a PARTIAL dataset.", flush=True)
+            return None
+        raise IncompleteSpool(
+            f"{spool_path} has no {MANIFEST_NAME} beside it, so it cannot be "
+            f"distinguished from an ABORTED phase A — gzip closes cleanly on "
+            f"an interrupted pass, leaving a valid file with only part of the "
+            f"ways. Loading it would replace the live table with a partial "
+            f"national dataset and record success. Re-run phase A, or pass "
+            f"--accept-unverified-spool if you know this pass completed."
+        )
+    actual = spool_path.stat().st_size
+    recorded = manifest.get("spool_bytes")
+    if recorded is not None and actual != recorded:
+        raise IncompleteSpool(
+            f"{spool_path} is {actual:,} bytes but its manifest recorded "
+            f"{recorded:,} — the spool changed after phase A finished "
+            f"(truncated, or still being written). Refusing to load it."
+        )
+    kept = manifest.get("kept")
+    if not kept:
+        raise IncompleteSpool(
+            f"{spool_path}'s manifest records kept={kept!r} — phase A "
+            f"produced no ways, so there is nothing to publish and the swap "
+            f"would empty {DEFAULT_TARGET}."
+        )
+    return int(kept)
+
+
 def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
                  target: str = DEFAULT_TARGET, *,
                  keep_workdir: bool = False,
                  progress_every: int = 500_000,
                  index_path: Path | None = None,
-                 from_spool: str | Path | None = None) -> dict:
+                 from_spool: str | Path | None = None,
+                 min_rows: int = 1,
+                 accept_unverified_spool: bool = False) -> dict:
     """Extract + load one PBF into `target` under ONE audited source run.
 
     Contract for scripts/osm_extract.py (--job ways): call exactly this.
@@ -587,9 +680,12 @@ def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
         observed_at = replication_timestamp(pbf)
         if resumed_spool is not None:
             size_gib = resumed_spool.stat().st_size / 2**30
+            expect_rows = _verify_resumed_spool(
+                resumed_spool, accept_unverified=accept_unverified_spool)
             print(f"osm_ways: resuming phase B from {resumed_spool} "
-                  f"({size_gib:,.2f} GiB gzip spool) — phase A skipped",
-                  flush=True)
+                  f"({size_gib:,.2f} GiB gzip spool, manifest kept="
+                  f"{expect_rows if expect_rows is not None else '?'}) "
+                  f"— phase A skipped", flush=True)
             stats = {"spool": resumed_spool, "scanned": None, "kept": None,
                      "skipped_geom": None, "skipped_class": None,
                      "pass_seconds": None}
@@ -603,6 +699,10 @@ def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
             published = snapshot_swap(
                 conn, target, _rows_from_spool(stats["spool"], observed_at),
                 source_id=SOURCE_ID, run_id=run_id,
+                # A zero-row spool used to swap an EMPTY table over the live
+                # national one and record success; the headroom check waved it
+                # through too (0 bytes x 12 = 0 needed).
+                min_rows=min_rows,
             )
     except BaseException as exc:
         _finish_run(run_id, "failed",
@@ -650,31 +750,64 @@ def run_ways_job(pbf_path: str | Path = DEFAULT_PBF,
 
 def _cleanup_workdir(workdir: Path, *, keep_workdir: bool,
                      resumed: bool) -> None:
-    """Drop the workdir only when this run created it and was not asked to
-    keep it. A --from-spool run never deletes the workdir it was handed: that
-    spool is someone else's preserved 3-4 h pass, and deleting it on a
-    transient load failure is exactly the loss this resume path exists to
-    prevent."""
+    """Drop the workdir only when there is provably nothing worth keeping.
+
+    Three cases, in order:
+
+    1. `resumed` — never delete a workdir we were handed. That spool is
+       someone else's preserved 3-4 h pass; deleting it on a transient load
+       failure is exactly the loss this resume path exists to prevent.
+    2. **Phase A completed** (a manifest exists) — never delete, whatever
+       `keep_workdir` says. This is the fix for the 2026-07-23 incident: a
+       clean 3.4-hour pass was destroyed because phase B hit DiskFull and the
+       failure path rmtree'd the workdir, while the error message the operator
+       then read claimed "The pass output is preserved at ..." and handed them
+       a --from-spool command pointing at a directory that no longer existed.
+       Deletion is cheap to defer; a completed pass is not cheap to redo.
+    3. Otherwise (phase A itself failed or was interrupted) — honor
+       `keep_workdir`. There is no complete pass to protect, and the node
+       index is tens of GB.
+    """
     if resumed:
         if not keep_workdir:
             print(f"osm_ways: keeping handed-in workdir {workdir} "
                   f"(--from-spool never deletes a spool it did not create)",
                   flush=True)
         return
+    if (workdir / MANIFEST_NAME).is_file():
+        print(f"osm_ways: keeping {workdir} — phase A COMPLETED, so the spool "
+              f"is worth hours. Replay phase B alone with:\n"
+              f"  scripts/osm_ways_job.py --from-spool {workdir} --pbf <pbf>\n"
+              f"Delete it by hand once the load has landed.", flush=True)
+        return
     if not keep_workdir:
         shutil.rmtree(workdir, ignore_errors=True)
 
 
 def run_ways(pbf: str | Path, *, node_cache: Path | None = None,
-             keep_cache: bool = False, target: str = DEFAULT_TARGET) -> dict:
+             keep_cache: bool = False, target: str = DEFAULT_TARGET,
+             from_spool: str | Path | None = None,
+             min_rows: int = 1,
+             accept_unverified_spool: bool = False) -> dict:
     """Adapter for scripts/osm_extract.py --job ways (the signature the POI
     track's main() calls). Thin mapping onto run_ways_job: node_cache
     overrides the disk node-index path (default: workdir-managed under
-    data/pbf/), keep_cache keeps the workdir (index + spool) for re-runs."""
+    data/pbf/), keep_cache keeps the node index for re-runs.
+
+    `from_spool` is exposed here deliberately: without it the recovery path
+    was reachable only from this module's own CLI, so the engine's derived
+    runner — the entry point that actually runs unattended — still had the
+    original all-or-nothing behaviour and could not replay a failed load.
+    Note that a COMPLETED pass's workdir is now preserved regardless of
+    keep_cache (see _cleanup_workdir), so the unattended path can always be
+    resumed even though its default is not to keep caches.
+    """
     node_cache = Path(node_cache) if node_cache is not None else None
     try:
         return run_ways_job(pbf, target, keep_workdir=keep_cache,
-                            index_path=node_cache)
+                            index_path=node_cache, from_spool=from_spool,
+                            min_rows=min_rows,
+                            accept_unverified_spool=accept_unverified_spool)
     finally:
         # An externally-supplied cache path lives outside the workdir, so the
         # workdir cleanup can't remove it — honor keep_cache=False ourselves.
@@ -696,10 +829,21 @@ def main() -> int:
         help="skip the osmium pass and load an existing kept spool "
              "(a .osmways-work-* dir or its ways.ndjson.gz). --pbf is still "
              "read, for its replication-timestamp header only.")
+    parser.add_argument(
+        "--min-rows", type=int, default=1,
+        help="refuse the swap below this many rows (default 1: never replace "
+             "the live table with nothing). For a US pass set a real floor, "
+             "e.g. --min-rows 1000000, so a truncated pass cannot publish.")
+    parser.add_argument(
+        "--accept-unverified-spool", action="store_true",
+        help="load a --from-spool workdir that has no completion manifest. "
+             "Only for spools you know finished; an interrupted pass leaves a "
+             "valid gzip holding PART of the ways.")
     args = parser.parse_args()
     try:
         run_ways_job(args.pbf, args.target, keep_workdir=args.keep_workdir,
-                     from_spool=args.from_spool)
+                     from_spool=args.from_spool, min_rows=args.min_rows,
+                     accept_unverified_spool=args.accept_unverified_spool)
     except BaseException as exc:
         print(f"osm_ways run failed: {type(exc).__name__}: {exc}",
               file=sys.stderr)

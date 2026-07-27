@@ -1,0 +1,27 @@
+# truck-intel: monthly refresh of the truck-mechanic layer.
+#
+# Runs the full mechanic_list pipeline: pull the truck-specific Overture Places
+# categories, re-derive nearest-truck-route columns (which the map layer filters
+# on), re-score verification, and re-render the HTML deliverable.
+#
+# Why monthly: Overture publishes monthly releases, so polling faster than
+# upstream changes would burn a national parquet scan to rewrite identical rows —
+# and it would reset observed_at, making stale data look fresh.
+#
+# Why this unit exists at all: until 2026-07-26 the mechanic layer had NO
+# scheduled refresh. 11,759 shops sat at a fixed Overture vintage, and nothing
+# would ever have said so out loud — the freshness SLO only watches sources that
+# record ops.source_runs rows.
+[Unit]
+Description=truck-intel monthly truck-mechanic refresh (Overture Places)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python scripts/mechanic_list.py
+# A national Overture scan plus 11.7k KNN route assignments.
+TimeoutStartSec=3h
+Nice=10
+IOSchedulingClass=idle

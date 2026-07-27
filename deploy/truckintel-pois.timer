@@ -1,0 +1,22 @@
+# Fires truckintel-pois.service weekly, Sunday 02:00 local.
+#
+# Why Sunday 02:00: it is clear of the nightly quality pass (03:30), the daily
+# AAA price fetch (06:15) and the monthly businesses rebuild (1st, 04:30), so a
+# 12 GB download and a full PBF pass never compete with another heavy job for
+# disk. Sunday because a week's worth of OSM edits is the unit of change this
+# job exists to pick up.
+#
+# Persistent=true: a laptop that was off on Sunday refreshes on next boot rather
+# than silently skipping the week — a missed refresh should be visible in the
+# data's observed_at, not hidden by the scheduler.
+[Unit]
+Description=truck-intel weekly OSM POI refresh timer (Sun 02:00 local)
+
+[Timer]
+OnCalendar=Sun *-*-* 02:00:00
+RandomizedDelaySec=30m
+AccuracySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

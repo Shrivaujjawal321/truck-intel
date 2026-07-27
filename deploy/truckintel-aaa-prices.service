@@ -1,0 +1,28 @@
+# truck-intel daily diesel prices from AAA.
+#
+# OPT-IN BY DESIGN. AAA's terms grant a limited licence for PERSONAL,
+# NON-COMMERCIAL use only (gasprices.aaa.com/about-aaa), so the job refuses to
+# run unless AAA_PRICES_ENABLED=1 is set — which this unit does deliberately,
+# for Boss's personal tool. Remove this unit before the platform is ever served
+# to anyone else; EIA (weekly, regional, US public domain) keeps working alone.
+#
+# Politeness: the script fetches through truckintel.politeness.polite_get with a
+# 10-second interval, matching the Crawl-delay in their robots.txt, and sends a
+# descriptive contact user-agent. Measured 2026-07-24: two back-to-back requests
+# earn a 403 from their Cloudflare edge; honouring the delay returns 200. A 403
+# or repeated 429 raises, the run is recorded 'failed', and nothing retries
+# around it.
+#
+# One ops.source_runs row per invocation under source id 'aaa_daily', so
+# scripts/freshness_check.py alerts if the prices go stale (SLO 48 h).
+[Unit]
+Description=truck-intel AAA daily state diesel prices (personal use)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+Environment=AAA_PRICES_ENABLED=1
+TimeoutStartSec=15m
+ExecStart=%h/.local/bin/uv run python scripts/aaa_prices.py

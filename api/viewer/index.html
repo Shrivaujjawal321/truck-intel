@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Truck Intel</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<style>
+  :root {
+    --bg:#0a0e15; --panel:#111722; --raise:#18202e; --line:#232d3f;
+    --text:#e8eef8; --dim:#8a99b3; --faint:#5d6b84;
+    --accent:#f5a524; --r:9px;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; }
+  #app { display:grid; grid-template-columns:352px 1fr; height:100%; }
+  aside { background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0; }
+
+  .brand { padding:16px 18px 13px; }
+  .brand h1 { margin:0; font-size:14px; letter-spacing:.13em; text-transform:uppercase;
+    font-weight:700; }
+  .brand p { margin:3px 0 0; color:var(--dim); font-size:12px; }
+
+  .tabs { display:flex; gap:3px; padding:0 12px; border-bottom:1px solid var(--line); }
+  .tabs button { flex:1; background:none; border:0; color:var(--faint); cursor:pointer;
+    font:inherit; font-size:12.5px; padding:9px 0 10px; border-bottom:2px solid transparent;
+    transition:color .12s; }
+  .tabs button:hover { color:var(--dim); }
+  .tabs button[aria-selected="true"] { color:var(--text); border-bottom-color:var(--accent); }
+
+  .pane { overflow-y:auto; flex:1; min-height:0; padding:16px 14px 28px; }
+  .pane[hidden] { display:none; }
+  h2 { margin:0 0 9px; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--faint); font-weight:700; }
+  .block { margin-bottom:20px; }
+
+  /* --- truck --- */
+  .truck { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .truck label { display:block; background:var(--raise); border:1px solid transparent;
+    border-radius:var(--r); padding:7px 8px 6px; cursor:text; transition:border-color .12s; }
+  .truck label:focus-within { border-color:var(--accent); }
+  .truck .k { font-size:10px; color:var(--faint); text-transform:uppercase;
+    letter-spacing:.06em; }
+  .truck input { width:100%; background:none; border:0; color:var(--text); padding:1px 0 0;
+    font:inherit; font-size:14px; font-variant-numeric:tabular-nums; outline:none; }
+  .truck .u { font-size:10px; color:var(--faint); }
+  .hazmat { display:flex; align-items:center; gap:8px; margin-top:7px; padding:8px 10px;
+    background:var(--raise); border-radius:var(--r); cursor:pointer; font-size:12.5px; }
+  .hazmat input { accent-color:var(--accent); width:14px; height:14px; cursor:pointer; }
+
+  /* --- pickup / drop --- */
+  .pt { display:flex; align-items:center; gap:10px; background:var(--raise);
+    border:1px solid transparent; border-radius:var(--r); padding:10px 11px;
+    margin-bottom:6px; cursor:pointer; transition:border-color .12s; }
+  .pt:hover { border-color:var(--line); }
+  .pt.armed { border-color:var(--accent); }
+  .pt .pin { width:9px; height:9px; border-radius:50%; flex:none; }
+  .pt .who { color:var(--faint); font-size:10px; text-transform:uppercase;
+    letter-spacing:.07em; width:38px; flex:none; }
+  .pt .v { flex:1; font-size:13px; font-variant-numeric:tabular-nums; }
+  .pt .v.empty { color:var(--faint); }
+  .pt .x { color:var(--faint); padding:0 3px; font-size:15px; line-height:1; }
+  .pt .x:hover { color:var(--text); }
+
+  button.primary { width:100%; padding:11px; border:0; border-radius:var(--r);
+    background:var(--accent); color:#1c1405; font-weight:650; font-size:13.5px;
+    cursor:pointer; transition:filter .12s; }
+  button.primary:hover:not(:disabled) { filter:brightness(1.08); }
+  button.primary:disabled { background:#2a3345; color:var(--faint); cursor:not-allowed; }
+  button.link { width:100%; margin-top:7px; padding:7px; border:0; background:none;
+    color:var(--faint); font:inherit; font-size:12px; cursor:pointer; }
+  button.link:hover { color:var(--dim); }
+
+  /* --- result --- */
+  .result { margin-top:20px; }
+  .big { font-size:34px; font-weight:700; line-height:1.05; font-variant-numeric:tabular-nums; }
+  .big span { font-size:13px; font-weight:400; color:var(--dim); margin-left:6px; }
+  .via { color:var(--dim); font-size:12.5px; margin:5px 0 13px; }
+
+  .verdict { display:flex; gap:9px; align-items:flex-start; padding:10px 11px;
+    border-radius:var(--r); font-size:12.5px; margin-bottom:8px; }
+  .verdict.good { background:#0f2318; color:#9df0c4; }
+  .verdict.warn { background:#2a2210; color:#fcd77e; }
+  .verdict b { font-weight:650; }
+  .verdict .sub { color:var(--dim); display:block; margin-top:3px; font-size:11.5px; }
+
+  .rows { border-top:1px solid var(--line); }
+  details.row { border-bottom:1px solid var(--line); }
+  details.row > summary { list-style:none; cursor:pointer; display:flex;
+    align-items:center; gap:11px; padding:11px 2px; }
+  details.row > summary::-webkit-details-marker { display:none; }
+  details.row > summary:hover .lbl { color:#fff; }
+  .row .ico { width:22px; text-align:center; font-size:14px; flex:none; }
+  .row .n { font-size:16px; font-weight:650; font-variant-numeric:tabular-nums;
+    min-width:46px; text-align:right; }
+  .row .lbl { flex:1; font-size:13px; color:var(--dim); transition:color .12s; }
+  .row .arw { color:var(--faint); font-size:10px; transition:transform .15s; }
+  details.row[open] .arw { transform:rotate(90deg); }
+  .row.zero .n, .row.zero .lbl { color:var(--faint); }
+  .onlyv { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--faint);
+    padding:0 2px 9px 55px; cursor:pointer; }
+  .onlyv input { accent-color:var(--accent); width:12px; height:12px; cursor:pointer; }
+
+  .list { max-height:280px; overflow-y:auto; padding-bottom:9px; }
+  .it { padding:7px 9px; border-radius:7px; cursor:pointer; }
+  .it:hover { background:var(--raise); }
+  .it .h { display:flex; gap:9px; justify-content:space-between; }
+  .it .nm { font-size:12.5px; }
+  .it .at { color:var(--faint); font-size:11px; flex:none;
+    font-variant-numeric:tabular-nums; }
+  .it .d { color:var(--dim); font-size:11.5px; margin-top:1px; }
+  .it .d.bad { color:#fca5a5; }
+  .none { color:var(--faint); font-size:12px; padding:7px 9px; }
+  .tags { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 3px; }
+  .tag { font-size:10px; padding:2px 6px; border-radius:20px; white-space:nowrap; }
+  .tag.ok  { background:#12301f; color:#86efac; }
+  .tag.mid { background:#2b2412; color:#fcd77e; }
+  .tag.no  { background:#2a1a1c; color:#fca5a5; }
+  .tiny { color:var(--faint); font-size:10.5px; }
+
+  details.why { margin-top:14px; }
+  details.why > summary { list-style:none; cursor:pointer; color:var(--faint);
+    font-size:11.5px; padding:4px 0; }
+  details.why > summary::-webkit-details-marker { display:none; }
+  details.why > summary:hover { color:var(--dim); }
+  .whybody p { color:var(--dim); font-size:11.5px; margin:7px 0 0; padding-left:11px;
+    border-left:2px solid var(--line); line-height:1.55; }
+
+  .err { font-size:12.5px; color:#fca5a5; background:#251316; padding:11px 12px;
+    border-radius:var(--r); }
+  .err b { display:block; margin-bottom:3px; color:#f87171; }
+
+  /* --- explore --- */
+  .lyr { display:flex; align-items:center; gap:10px; padding:8px 9px; border-radius:7px;
+    cursor:pointer; }
+  .lyr:hover { background:var(--raise); }
+  .lyr input { accent-color:var(--accent); width:14px; height:14px; cursor:pointer; }
+  .lyr .sw { width:9px; height:9px; border-radius:50%; flex:none; }
+  .lyr .sw.line { width:13px; height:3px; border-radius:2px; }
+  .lyr .nm { flex:1; font-size:13px; }
+  .lyr .zh { display:block; font-size:10.5px; color:var(--faint); }
+  .lyr .ct { color:var(--dim); font-size:12px; font-variant-numeric:tabular-nums; }
+  /* "9,809 of 11,759" — the held total is dimmer than the drawn count, so the
+     number that matches the screen reads first and the filter is still visible. */
+  .lyr .ct .of { opacity:.55; font-size:11px; }
+  .live-dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:#38bdf8; margin-left:6px; vertical-align:middle;
+    animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.25 } }
+  @media (prefers-reduced-motion: reduce) { .live-dot { animation:none } }
+  .live-line { font-size:13px; color:var(--text); font-variant-numeric:tabular-nums; }
+  .live-note { font-size:11px; color:var(--faint); margin-top:6px; line-height:1.45; }
+  #live-list { margin-top:8px; display:flex; flex-direction:column; gap:4px; }
+  .trk { display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+    width:100%; text-align:left; background:#0d1526; border:1px solid var(--line);
+    border-radius:7px; padding:7px 9px; cursor:pointer; color:var(--text);
+    font:inherit; font-size:12.5px; }
+  .trk:hover { border-color:#38bdf8; }
+  /* Dimmed AND worded: a stale truck should not rely on colour alone. */
+  .trk.stale { color:var(--faint); }
+  .trk-n { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trk-m { color:var(--dim); font-size:11.5px; font-variant-numeric:tabular-nums;
+    flex:none; }
+  .trk.stale .trk-m { color:var(--faint); }
+  .lyr.off { opacity:.45; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:12px; }
+  table.t td { padding:5px 0; border-bottom:1px solid #1a2231; color:var(--dim); }
+  table.t td:last-child { text-align:right; color:var(--text);
+    font-variant-numeric:tabular-nums; }
+
+  /* --- map --- */
+  main { position:relative; min-width:0; }
+  #map { position:absolute; inset:0; }
+  #hud { position:absolute; left:14px; bottom:14px; z-index:5; font-size:11.5px;
+    background:rgba(17,23,34,.93); border:1px solid var(--line); border-radius:8px;
+    padding:7px 12px; color:var(--dim); font-variant-numeric:tabular-nums;
+    backdrop-filter:blur(8px); }
+  #hud b { color:var(--text); font-weight:650; }
+  .maplibregl-popup-content { background:var(--panel); color:var(--text);
+    border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+    font-size:12.5px; max-width:320px; }
+  .maplibregl-popup-tip { border-top-color:var(--line)!important;
+    border-bottom-color:var(--line)!important; }
+  .maplibregl-popup-close-button { color:var(--faint); font-size:17px; }
+  .pk { color:var(--accent); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    margin-bottom:6px; }
+  .pt-title { font-weight:650; margin-bottom:3px; }
+  .pr { display:flex; gap:14px; justify-content:space-between; padding:3px 0;
+    border-top:1px solid #1a2231; }
+  .pr span:first-child { color:var(--faint); }
+  .pr span:last-child { text-align:right; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="brand">
+      <h1>Truck Intel</h1>
+      <p>Find a road a truck is allowed to use</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button id="tab-plan" role="tab" aria-selected="true">Find a road</button>
+      <button id="tab-data" role="tab" aria-selected="false">See all data</button>
+    </div>
+
+    <div class="pane" id="pane-plan">
+      <div class="block">
+        <h2>Your truck</h2>
+        <div class="truck">
+          <label><span class="k">How tall</span>
+            <input type="number" id="v-height" value="162" min="60" max="300" />
+            <span class="u" id="h-text">13'6"</span></label>
+          <label><span class="k">How heavy</span>
+            <input type="number" id="v-weight" value="80000" min="1000" max="500000" step="500" />
+            <span class="u">pounds</span></label>
+          <label><span class="k">Trailer</span>
+            <input type="number" id="v-length" value="53" min="10" max="200" />
+            <span class="u">feet long</span></label>
+          <label><span class="k">How wide</span>
+            <input type="number" id="v-width" value="102" min="60" max="200" />
+            <span class="u">inches</span></label>
+        </div>
+        <label class="hazmat">
+          <input type="checkbox" id="v-hazmat" /> Carrying dangerous goods (hazmat)
+        </label>
+      </div>
+
+      <div class="block">
+        <h2>Where you are going</h2>
+        <div class="pt" id="pt-pickup" data-role="pickup">
+          <span class="pin" style="background:#34d399"></span>
+          <span class="who">From</span>
+          <span class="v empty">click the map</span>
+          <span class="x" title="clear">×</span>
+        </div>
+        <div class="pt" id="pt-drop" data-role="drop">
+          <span class="pin" style="background:#f87171"></span>
+          <span class="who">To</span>
+          <span class="v empty">click the map</span>
+          <span class="x" title="clear">×</span>
+        </div>
+        <button class="primary" id="find" disabled>Find route</button>
+        <button class="link" id="reset">Clear</button>
+      </div>
+
+      <div class="result" id="result"></div>
+    </div>
+
+    <div class="pane" id="pane-data" hidden>
+      <div class="block">
+        <h2>Layers</h2>
+        <div id="layers"></div>
+      </div>
+      <div class="block">
+        <h2>Live trucks <span class="live-dot"></span></h2>
+        <div class="live-line" id="live-count">…</div>
+        <div id="live-list"></div>
+        <div class="live-note">Own-GPS ingest · polled every 5 s · a fix older
+          than 3 min is drawn hollow and labelled stale. Click a truck for its
+          last 2 h trail.</div>
+      </div>
+      <div class="block">
+        <h2>In the database, not on the map</h2>
+        <table class="t" id="nonspatial"></table>
+      </div>
+      <div class="block">
+        <h2>Mechanic types (on route)</h2>
+        <table class="t" id="categories"></table>
+      </div>
+      <div class="block">
+        <h2>Latest diesel price</h2>
+        <table class="t" id="fuel"></table>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="map"></div>
+    <div id="hud">zoom <b id="hud-z">–</b> · <b id="hud-n">0</b> things shown ·
+      <span id="hud-m">–</span></div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const API = location.origin;
+const fmt = n => Number(n).toLocaleString('en-US');
+const MI = 1609.344;
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: { basemap: {
+      type: 'raster',
+      tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors © CARTO'
+    }},
+    layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }]
+    // No `glyphs` and no symbol layers, deliberately. Adding
+    // fonts.openmaptiles.org to label live trucks looked free but that host
+    // answers 200 with an HTML page, which MapLibre then parses as protobuf and
+    // throws "Unimplemented type: 4" on — 13 console errors per pan, no labels.
+    // Truck names live in the sidebar list and the popup instead: no external
+    // dependency, nothing to break, and a clickable list beats overlapping
+    // labels once more than two trucks share a metro.
+  },
+  center: [-97.5, 39.2], zoom: 3.9, maxZoom: 17
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
+
+/* ---------------- national layers ---------------- */
+
+let LAYERS = [];
+const drawnIds = new Set();
+const clusterIds = new Map();
+const styleIdsFor = s => [s.id, ...(s.cluster_below_zoom ? [`${s.id}-cluster`] : [])];
+
+function addLayer(spec) {
+  const src = `src-${spec.id}`;
+  map.addSource(src, {
+    type: 'vector',
+    tiles: [`${API}/v1/tiles/${spec.id}/{z}/{x}/{y}.mvt`],
+    minzoom: spec.min_zoom, maxzoom: 14
+  });
+
+  if (spec.kind === 'line') {
+    map.addLayer({
+      id: spec.id, type: 'line', source: src, 'source-layer': spec.id,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': spec.color, 'line-opacity': 0.85,
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          4, ['case', ['>', ['coalesce', ['get','aadt_com'], 0], 5000], 1.1, 0.45],
+          8, ['case', ['>', ['coalesce', ['get','aadt_com'], 0], 5000], 2.4, 1.1],
+          13, ['case', ['>', ['coalesce', ['get','aadt_com'], 0], 5000], 5.5, 2.6]]
+      }
+    });
+    drawnIds.add(spec.id);
+    return;
+  }
+
+  // Two shapes from one source: a density grid below the cluster zoom (features
+  // carry `n`), individual rows above it.
+  const cz = spec.cluster_below_zoom;
+  if (cz) {
+    map.addLayer({
+      id: `${spec.id}-cluster`, type: 'circle', source: src, 'source-layer': spec.id,
+      maxzoom: cz,
+      paint: {
+        'circle-color': spec.color, 'circle-opacity': 0.42,
+        'circle-radius': ['interpolate', ['linear'],
+          ['sqrt', ['coalesce', ['get','n'], 1]], 1,1.6, 5,3.4, 20,7, 60,12, 160,19],
+        'circle-stroke-width': 0.6, 'circle-stroke-color': spec.color,
+        'circle-stroke-opacity': 0.7
+      }
+    });
+    clusterIds.set(`${spec.id}-cluster`, spec);
+    drawnIds.add(`${spec.id}-cluster`);
+  }
+  map.addLayer({
+    id: spec.id, type: 'circle', source: src, 'source-layer': spec.id,
+    minzoom: cz || 0,
+    paint: {
+      'circle-color': spec.color, 'circle-opacity': 0.85,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 4,2, 9,4, 14,7],
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 8,0, 11,1],
+      'circle-stroke-color': 'rgba(6,10,17,.85)'
+    }
+  });
+  drawnIds.add(spec.id);
+}
+
+function popupHtml(f, spec) {
+  const p = f.properties || {};
+  const title = p.name || p.route_name || p.route_ref || p.kind || '(no name)';
+  const rows = spec.props.filter(k => k !== 'name').map(k => {
+    const v = p[k];
+    // NULL is unknown — never rendered as 0, "no", or blank.
+    const shown = (v === undefined || v === null || v === '') ? 'unknown' : String(v);
+    return `<div class="pr"><span>${k}</span><span>${shown}</span></div>`;
+  }).join('');
+  return `<div class="pk">${spec.label}</div><div class="pt-title">${title}</div>${rows}`;
+}
+
+function wireInteractions(spec) {
+  styleIdsFor(spec).forEach(id => {
+    const isCluster = id.endsWith('-cluster');
+    map.on('click', id, e => {
+      if (armed || !e.features?.length) return;
+      const f = e.features[0];
+      const html = isCluster
+        ? `<div class="pk">${spec.label}</div>
+           <div class="pt-title">${fmt(f.properties.n)} of them here</div>
+           <div class="pr"><span>showing</span><span>grouped dots</span></div>
+           <div class="pr"><span>see each one</span><span>zoom to ${spec.cluster_below_zoom}+</span></div>`
+        : popupHtml(f, spec);
+      new maplibregl.Popup({ closeButton: true, maxWidth: '330px' })
+        .setLngLat(spec.kind === 'line' && !isCluster
+          ? e.lngLat : f.geometry.coordinates.slice())
+        .setHTML(html).addTo(map);
+    });
+    map.on('mouseenter', id, () => { if (!armed) map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', id, () => { if (!armed) map.getCanvas().style.cursor = ''; });
+  });
+}
+
+function hint(spec) {
+  const z = spec.cluster_below_zoom || spec.generalized_below_zoom;
+  if (!z) return '';
+  const what = spec.cluster_below_zoom ? 'grouped when zoomed out' : 'joined into long roads';
+  return `<span class="zh">${what} · see each one from zoom ${z}</span>`;
+}
+
+function buildLegend(inv) {
+  const meta = Object.fromEntries(inv.datasets.map(d => [d.id, d]));
+  const box = document.getElementById('layers');
+  box.innerHTML = '';
+  LAYERS.forEach(spec => {
+    const d = meta[spec.id] || {};
+    const drawn = d.rows ?? 0, held = d.rows_total ?? drawn;
+    // A filtered layer states BOTH numbers, right on the legend row. "9,809 of
+    // 11,759" is the difference between a working filter and missing data, and
+    // the map must never leave that to guesswork.
+    const count = held > drawn
+      ? `<span class="ct" title="${d.row_filter || ''}">${fmt(drawn)} <span class="of">of ${fmt(held)}</span></span>`
+      : `<span class="ct">${fmt(drawn)}</span>`;
+    const row = document.createElement('label');
+    row.className = 'lyr' + (spec.default_on ? '' : ' off');
+    row.innerHTML = `
+      <input type="checkbox" ${spec.default_on ? 'checked' : ''} data-layer="${spec.id}" />
+      <span class="sw ${spec.kind}" style="background:${spec.color}"></span>
+      <span class="nm">${spec.label}${hint(spec)}</span>
+      ${count}`;
+    row.querySelector('input').addEventListener('change', ev => {
+      styleIdsFor(spec).forEach(id =>
+        map.setLayoutProperty(id, 'visibility', ev.target.checked ? 'visible' : 'none'));
+      row.classList.toggle('off', !ev.target.checked);
+      updateHud();
+    });
+    box.appendChild(row);
+  });
+}
+
+const fillTable = (el, rows) =>
+  el.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+function updateHud() {
+  const z = map.getZoom();
+  document.getElementById('hud-z').textContent = z.toFixed(1);
+  const vis = [...drawnIds].filter(id =>
+    map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+  const feats = vis.length ? map.queryRenderedFeatures({ layers: vis }) : [];
+  // A clustered feature stands for `n` rows — report rows, not blobs.
+  let rows = 0;
+  for (const f of feats) rows += clusterIds.has(f.layer.id) ? (f.properties.n || 1) : 1;
+  document.getElementById('hud-n').textContent = fmt(rows);
+  const grouped = [...clusterIds.values()].filter(s =>
+    z < s.cluster_below_zoom &&
+    map.getLayoutProperty(`${s.id}-cluster`, 'visibility') !== 'none').length;
+  document.getElementById('hud-m').textContent = grouped
+    ? `${grouped} layer${grouped > 1 ? 's' : ''} grouped` : 'showing each one';
+}
+
+/* ---------------- route planning ---------------- */
+
+const pick = { pickup: null, drop: null };
+const markers = { pickup: null, drop: null };
+let armed = null;
+let lastRoute = null;
+
+const KINDS = {
+  restrictions:   { ico:'⚠',  label:'Restrictions',   color:'#f87171' },
+  mechanics:      { ico:'🔧', label:'Mechanics',      color:'#fb923c' },
+  fuel_stations:  { ico:'⛽', label:'Fuel stations',  color:'#34d399' },
+  truck_parking:  { ico:'🅿', label:'Truck parking',  color:'#22d3ee' },
+  rest_areas:     { ico:'☕', label:'Rest areas',     color:'#a78bfa' },
+  weigh_stations: { ico:'⚖',  label:'Weigh stations', color:'#eab308' }
+};
+
+function setPoint(role, lngLat) {
+  pick[role] = lngLat ? { lon: lngLat.lng, lat: lngLat.lat } : null;
+  const el = document.getElementById(`pt-${role}`).querySelector('.v');
+  el.textContent = lngLat ? `${lngLat.lat.toFixed(4)}, ${lngLat.lng.toFixed(4)}`
+                          : 'click the map';
+  el.classList.toggle('empty', !lngLat);
+  markers[role]?.remove(); markers[role] = null;
+  if (lngLat) {
+    markers[role] = new maplibregl.Marker({
+      color: role === 'pickup' ? '#34d399' : '#f87171', draggable: true
+    }).setLngLat(lngLat).addTo(map);
+    markers[role].on('dragend', () => setPoint(role, markers[role].getLngLat()));
+  }
+  document.getElementById('find').disabled = !(pick.pickup && pick.drop);
+}
+
+function arm(role) {
+  armed = role;
+  ['pickup','drop'].forEach(r =>
+    document.getElementById(`pt-${r}`).classList.toggle('armed', r === role));
+  map.getCanvas().style.cursor = role ? 'crosshair' : '';
+}
+
+function drawLine(geometry) {
+  const data = { type:'Feature', geometry, properties:{} };
+  if (map.getSource('route-line')) return map.getSource('route-line').setData(data);
+  map.addSource('route-line', { type:'geojson', data });
+  // Casing under the line so it stays legible over the network it runs on.
+  map.addLayer({ id:'route-casing', type:'line', source:'route-line',
+    layout:{ 'line-cap':'round','line-join':'round' },
+    paint:{ 'line-color':'#04121f', 'line-opacity':0.9,
+      'line-width':['interpolate',['linear'],['zoom'],4,6,10,12,14,18] } });
+  map.addLayer({ id:'route-line', type:'line', source:'route-line',
+    layout:{ 'line-cap':'round','line-join':'round' },
+    paint:{ 'line-color':'#e8eef8',
+      'line-width':['interpolate',['linear'],['zoom'],4,2.5,10,6,14,9] } });
+}
+
+function featureCollection(d) {
+  const feats = [];
+  const onlyVerified = document.getElementById('only-verified')?.checked;
+  const push = (kind, it) => {
+    if (it.lon == null || it.lat == null) return;
+    const bits = [];
+    if (kind === 'restrictions') bits.push((it.reasons || []).join(' · '));
+    else {
+      if (it.category) bits.push(it.category);
+      if (it.brand) bits.push(it.brand);
+      if (it.truck_spaces != null) bits.push(`${it.truck_spaces} spaces`);
+      if (kind === 'fuel_stations') {
+        bits.push(it.verification_status === 'verified'
+          ? `confirmed by ${it.independent_sources} independent source${
+              it.independent_sources > 1 ? 's' : ''}`
+          : it.verification_status === 'probable' ? 'likely, not independently confirmed'
+          : 'unconfirmed');
+        bits.push(it.has_diesel === true ? 'diesel'
+                : it.has_diesel === false ? 'no diesel' : 'diesel unknown');
+      }
+      if (it.phone) bits.push(it.phone);
+    }
+    feats.push({ type:'Feature',
+      geometry:{ type:'Point', coordinates:[it.lon, it.lat] },
+      properties:{ kind, name: it.name || '(unnamed)',
+        detail: bits.filter(Boolean).join(' · '),
+        extra: kind === 'restrictions' ? (it.relation || '') : '',
+        at: `${(it.m_along / MI).toFixed(0)} mi in`,
+        off: it.offset_m > 120 ? `${(it.offset_m/1000).toFixed(1)} km off route`
+                               : 'on the route' } });
+  };
+  (d.restrictions || []).forEach(it => push('restrictions', it));
+  Object.entries(d.services || {}).forEach(([kind, items]) =>
+    (items || []).forEach(it => {
+      if (onlyVerified && kind === 'fuel_stations'
+          && it.verification_status !== 'verified') return;
+      push(kind, it);
+    }));
+  return { type:'FeatureCollection', features: feats };
+}
+
+function drawFeatures(d) {
+  const data = featureCollection(d);
+  if (map.getSource('route-features')) return map.getSource('route-features').setData(data);
+  map.addSource('route-features', { type:'geojson', data });
+  map.addLayer({ id:'route-features', type:'circle', source:'route-features',
+    paint:{
+      'circle-color': ['match', ['get','kind'],
+        ...Object.entries(KINDS).flatMap(([k,v]) => [k, v.color]), '#94a3b8'],
+      // Restrictions are what stops a truck — draw them biggest.
+      'circle-radius': ['interpolate',['linear'],['zoom'],
+        4, ['case',['==',['get','kind'],'restrictions'],5,3],
+        9, ['case',['==',['get','kind'],'restrictions'],8,5],
+        14,['case',['==',['get','kind'],'restrictions'],12,8]],
+      'circle-stroke-width': ['case',['==',['get','kind'],'restrictions'],2,1.2],
+      'circle-stroke-color':'#0a0e15', 'circle-opacity':0.95 } });
+
+  map.on('click', 'route-features', e => {
+    if (armed || !e.features?.length) return;
+    const p = e.features[0].properties;
+    new maplibregl.Popup({ closeButton:true, maxWidth:'320px' })
+      .setLngLat(e.features[0].geometry.coordinates.slice())
+      .setHTML(`<div class="pk">${KINDS[p.kind]?.label || p.kind}</div>
+        <div class="pt-title">${p.name}</div>
+        ${p.detail ? `<div class="pr"><span>details</span><span>${p.detail}</span></div>` : ''}
+        ${p.extra ? `<div class="pr"><span>note</span><span>${p.extra}</span></div>` : ''}
+        <div class="pr"><span>how far along</span><span>${p.at}</span></div>
+        <div class="pr"><span>off the road</span><span>${p.off}</span></div>`)
+      .addTo(map);
+  });
+  map.on('mouseenter','route-features',()=>{ if(!armed) map.getCanvas().style.cursor='pointer'; });
+  map.on('mouseleave','route-features',()=>{ if(!armed) map.getCanvas().style.cursor=''; });
+}
+
+function applyFeatureFilter() {
+  if (!map.getLayer('route-features')) return;
+  const on = [...document.querySelectorAll('#result .row-toggle')]
+    .filter(cb => cb.checked).map(cb => cb.dataset.kind);
+  map.setFilter('route-features', ['in', ['get','kind'], ['literal', on]]);
+}
+
+// National layers that duplicate a route bucket. Hidden while a route is shown,
+// so a dot on screen means "this one is on your route" and nothing else.
+const DUPLICATED = { fuel_stations:'fuel_stations', truck_parking:'parking_sites',
+  rest_areas:'rest_areas', weigh_stations:'weigh_points',
+  mechanics:'mechanic_shops', restrictions:'bridges' };
+let hiddenForRoute = [];
+
+function focusOnRoute() {
+  hiddenForRoute = [];
+  Object.values(DUPLICATED).forEach(layerId => {
+    const spec = LAYERS.find(l => l.id === layerId);
+    if (!spec) return;
+    styleIdsFor(spec).forEach(id => {
+      if (map.getLayer(id) && map.getLayoutProperty(id,'visibility') !== 'none') {
+        map.setLayoutProperty(id, 'visibility', 'none');
+        hiddenForRoute.push(id);
+      }
+    });
+    const cb = document.querySelector(`#layers input[data-layer="${layerId}"]`);
+    if (cb) { cb.checked = false; cb.closest('.lyr').classList.add('off'); }
+  });
+}
+
+function restoreLayers() {
+  hiddenForRoute.forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+    const cb = document.querySelector(
+      `#layers input[data-layer="${id.replace(/-cluster$/,'')}"]`);
+    if (cb) { cb.checked = true; cb.closest('.lyr').classList.remove('off'); }
+  });
+  hiddenForRoute = [];
+}
+
+function clearRoute() {
+  lastRoute = null;
+  document.getElementById('result').innerHTML = '';
+  restoreLayers();
+  ['route-line','route-casing'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); });
+  if (map.getSource('route-line')) map.removeSource('route-line');
+  if (map.getLayer('route-features')) map.removeLayer('route-features');
+  if (map.getSource('route-features')) map.removeSource('route-features');
+}
+
+function itemHtml(kind, it) {
+  const at = `${(it.m_along / MI).toFixed(0)} mi`;
+  if (kind === 'restrictions') {
+    return `<div class="it" data-lon="${it.lon}" data-lat="${it.lat}">
+      <div class="h"><span class="nm">${it.name || it.kind}</span><span class="at">${at}</span></div>
+      <div class="d bad">${(it.reasons||[]).join(' · ')}</div>
+      <div class="d">${it.relation || ''}</div></div>`;
+  }
+  if (kind === 'fuel_stations') return fuelHtml(it, at);
+
+  const bits = [];
+  if (it.category) bits.push(it.category);
+  if (it.brand) bits.push(it.brand);
+  if (it.truck_spaces != null) bits.push(`${it.truck_spaces} truck spaces`);
+  if (it.phone) bits.push(it.phone);
+  if (it.offset_m > 120) bits.push(`${(it.offset_m/1000).toFixed(1)} km off the road`);
+  return `<div class="it" data-lon="${it.lon}" data-lat="${it.lat}">
+    <div class="h"><span class="nm">${it.name || '(no name)'}</span><span class="at">${at}</span></div>
+    <div class="d">${bits.filter(Boolean).join(' · ')}</div></div>`;
+}
+
+// Never say "today" about yesterday's number. A stale price presented as
+// current is the one way this feature could actively mislead a driver.
+function ageWord(dateStr) {
+  if (!dateStr) return '';
+  const days = Math.round((Date.now() - new Date(dateStr + 'T12:00:00').getTime())
+                          / 86400000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days <= 7) return `${days} days ago`;
+  return `${days} days ago — this price is stale`;
+}
+
+// Fuel gets its own card: it is the one place Boss asked for every detail.
+function fuelHtml(it, at) {
+  const check = it.verification_status === 'verified'
+    ? `<span class="tag ok">✓ another company lists it too</span>`
+    : it.verification_status === 'probable'
+    ? `<span class="tag mid">only OpenStreetMap lists it</span>`
+    : `<span class="tag no">could not check</span>`;
+  const diesel = it.has_diesel === true ? '<span class="tag ok">diesel</span>'
+    : it.has_diesel === false ? '<span class="tag no">no diesel</span>'
+    : '<span class="tag mid">diesel not stated</span>';
+  const truck = it.hgv_access === true ? '<span class="tag ok">big trucks OK</span>' : '';
+  const where = [it.address, it.city, it.state, it.zip].filter(Boolean).join(', ');
+  // Prefer the daily state average when we have it; fall back to the weekly
+  // regional one. Either way the label says what it actually is — and says
+  // "today" only when the number really is today's.
+  const price = it.state_price_usd_gal != null
+    ? `<div class="d">Diesel in ${it.state || 'this state'} ${ageWord(it.state_price_on)}:
+        <b>$${Number(it.state_price_usd_gal).toFixed(2)}</b> a gallon
+        <span class="tiny">(state average, ${it.state_price_on} — not this
+        pump's price)</span></div>`
+    : it.region_price_usd_gal != null
+    ? `<div class="d">Diesel around here: <b>$${
+        Number(it.region_price_usd_gal).toFixed(2)}</b> a gallon
+        <span class="tiny">(area average for week of ${it.region_price_week} —
+        not this pump's price)</span></div>` : '';
+  return `<div class="it" data-lon="${it.lon}" data-lat="${it.lat}">
+    <div class="h"><span class="nm">${it.name || '(no name)'}</span>
+      <span class="at">${at}</span></div>
+    <div class="tags">${check}${diesel}${truck}</div>
+    ${where ? `<div class="d">${where}</div>` : ''}
+    ${it.phone ? `<div class="d">☎ ${it.phone}</div>` : ''}
+    ${it.opening_hours ? `<div class="d">Open: ${it.opening_hours}</div>` : ''}
+    ${it.website ? `<div class="d">${it.website}</div>` : ''}
+    ${price}
+    ${it.offset_m > 120 ? `<div class="d">${(it.offset_m/1000).toFixed(1)} km off the road</div>` : ''}
+  </div>`;
+}
+
+function renderResult(d) {
+  lastRoute = d;
+  const r = d.route, c = d.counts, u = d.unknowns, v = r.vehicle || {};
+  const via = r.roads.filter(x => x.kind === 'truck_route').slice(0,3)
+    .map(x => `${x.ref} ${x.miles.toFixed(0)} mi`).join(' · ');
+
+  const verdict = v.constrained_the_search ? `
+    <div class="verdict good">
+      <span>✓</span>
+      <div><b>Legal for ${v.height_text || '—'}${
+        v.weight_lb ? ' · ' + fmt(v.weight_lb) + ' lb' : ''}${v.hazmat ? ' · hazmat' : ''}</b>
+        ${v.segments_excluded ? `<span class="sub">${fmt(v.segments_excluded)} segment${
+          v.segments_excluded > 1 ? 's' : ''} skipped because this truck cannot use them — ${
+          (v.exclusion_reasons||[])[0] || ''}</span>` : ''}</div>
+    </div>` : '';
+
+  const warns = (v.statutory_notes || []).map(n =>
+    `<div class="verdict warn"><span>⚠</span><div>${n}</div></div>`).join('');
+
+  const onlyVerifiedChecked = document.getElementById('only-verified')?.checked;
+
+  const rows = Object.entries(KINDS).map(([k, meta]) => {
+    let items = k === 'restrictions' ? (d.restrictions || []) : (d.services?.[k] || []);
+    let n = c[k] ?? 0;
+    if (k === 'fuel_stations' && onlyVerifiedChecked) {
+      items = items.filter(it => it.verification_status === 'verified');
+      n = c.fuel_stations_verified ?? items.length;
+    }
+    const extra = k === 'fuel_stations' ? `
+      <label class="onlyv"><input type="checkbox" id="only-verified"
+        ${onlyVerifiedChecked ? 'checked' : ''} />
+        show only the ones another company also lists</label>` : '';
+    return `<details class="row${n ? '' : ' zero'}">
+      <summary>
+        <input type="checkbox" class="row-toggle" data-kind="${k}" checked
+               style="accent-color:${meta.color};width:13px;height:13px"
+               onclick="event.stopPropagation()" />
+        <span class="ico">${meta.ico}</span>
+        <span class="n">${fmt(n)}</span>
+        <span class="lbl">${meta.label}</span>
+        <span class="arw">▶</span>
+      </summary>
+      <div class="list">${items.length ? items.map(it => itemHtml(k, it)).join('')
+        : '<div class="none">none found</div>'}</div>
+    </details>${extra}`;
+  }).join('');
+
+  document.getElementById('result').innerHTML = `
+    <div class="big">${r.distance_mi.toFixed(0)}<span>miles, all on truck roads</span></div>
+    <div class="via">${via}</div>
+    ${verdict}${warns}
+    <div class="rows">${rows}</div>
+    <details class="why"><summary>What these numbers really mean ▾</summary>
+      <div class="whybody">
+        <p>This road passes ${fmt(c.bridges_on_route)} bridges.
+        You drive over ${fmt(c.bridges_you_drive_over || 0)} of them, and
+        ${fmt(c.bridges_carrying_another_road || 0)} carry a different road over your head.
+        <b>${fmt(u.bridges_without_clearance || 0)} of them have no height written down
+        anywhere</b>, so the warning count means "these are the problems we know
+        about" — not "this road is definitely clear".</p>
+        ${v.constrained_the_search ? `<p>We kept your truck away from every low bridge and weight limit that is
+        written down. It still passed ${fmt(v.structures_passed_without_recorded_clearance || 0)}
+        bridges nobody ever measured.</p>` : ''}
+        <p>Length and width are not checked road by road. US law (23 CFR 658) says
+        every state must let a 102 inch wide truck with a 48 foot trailer use
+        these roads, so the law already answers it.</p>
+        ${c.fuel_stations_verified != null ? `<p><b>${fmt(c.fuel_stations_verified)}</b> of ${fmt(c.fuel_stations)}
+        fuel stations are also listed by a company other than OpenStreetMap.
+        That means the station is really there. It does not mean it is open
+        today. The rest may still exist — we just could not double-check them.</p>
+        <p>Fuel prices shown are the average for that part of the country this
+        week. No free and legal source gives the price at a single pump, so we
+        do not pretend to have one.</p>` : ''}
+        ${(d.services?.fuel_stations || []).some(f => f.state_price_credit)
+          ? `<p>Daily state diesel prices: ${
+              (d.services.fuel_stations.find(f => f.state_price_credit) || {}).state_price_credit
+            }. Weekly regional prices: U.S. Energy Information Administration.</p>` : ''}
+        <p>Stops are within ${(d.buffers.service_buffer_m/1000).toFixed(0)} km in a
+        straight line — the driving distance will be a bit more.${
+        r.synthetic_connectors.count
+          ? ` This road also uses ${r.synthetic_connectors.count} small gap${
+              r.synthetic_connectors.count>1?'s':''} we joined up (50 m or less each).` : ''}</p>
+      </div></details>`;
+
+  document.querySelectorAll('#result .row-toggle').forEach(cb =>
+    cb.addEventListener('change', applyFeatureFilter));
+  document.getElementById('only-verified')?.addEventListener('change', () => {
+    if (!lastRoute) return;
+    drawFeatures(lastRoute); renderResult(lastRoute); applyFeatureFilter();
+  });
+  document.querySelectorAll('#result .it').forEach(el =>
+    el.addEventListener('click', () =>
+      map.flyTo({ center:[+el.dataset.lon, +el.dataset.lat], zoom:14 })));
+}
+
+async function findRoute() {
+  const btn = document.getElementById('find');
+  btn.disabled = true; btn.textContent = 'Looking for a road…';
+  const out = document.getElementById('result');
+  out.innerHTML = '';
+  try {
+    const num = id => {
+      const v = parseFloat(document.getElementById(id).value);
+      return Number.isFinite(v) ? v : null;
+    };
+    const qs = new URLSearchParams({
+      from: `${pick.pickup.lon},${pick.pickup.lat}`,
+      to: `${pick.drop.lon},${pick.drop.lat}`
+    });
+    for (const [key,id] of [['height_in','v-height'],['weight_lb','v-weight'],
+                            ['length_ft','v-length'],['width_in','v-width']]) {
+      const v = num(id); if (v != null) qs.set(key, v);
+    }
+    if (document.getElementById('v-hazmat').checked) qs.set('hazmat','true');
+    const h = num('v-height'); if (h != null) qs.set('clearance_in', Math.round(h));
+
+    const res = await fetch(`${API}/v1/route?${qs}`);
+    const d = await res.json();
+    if (!res.ok) {
+      // A refusal is a real answer: the network has no route this truck may use.
+      out.innerHTML = `<div class="err"><b>No road this truck can use</b>${
+        d.error?.message || 'request failed'}</div>`;
+      clearRoute();
+      return;
+    }
+    drawLine(d.route.geometry);
+    drawFeatures(d);
+    renderResult(d);
+    focusOnRoute();
+    applyFeatureFilter();
+    const b = new maplibregl.LngLatBounds();
+    [pick.pickup, pick.drop].forEach(p => b.extend([p.lon, p.lat]));
+    map.fitBounds(b, { padding: 90 });
+  } catch (e) {
+    out.innerHTML = `<div class="err"><b>That did not work</b>${e.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Find route';
+  }
+}
+
+function wirePlanner() {
+  ['pickup','drop'].forEach(role => {
+    const row = document.getElementById(`pt-${role}`);
+    row.addEventListener('click', ev => {
+      if (ev.target.classList.contains('x')) {
+        setPoint(role, null); arm(null); clearRoute(); return;
+      }
+      arm(armed === role ? null : role);
+    });
+  });
+  map.on('click', e => {
+    if (!armed) return;
+    setPoint(armed, e.lngLat);
+    // Two clicks plan a route: setting pickup arms drop.
+    arm(armed === 'pickup' && !pick.drop ? 'drop' : null);
+  });
+  document.getElementById('find').addEventListener('click', findRoute);
+  document.getElementById('reset').addEventListener('click', () => {
+    setPoint('pickup', null); setPoint('drop', null); arm(null); clearRoute();
+  });
+
+  const hEl = document.getElementById('v-height');
+  const showFeet = () => {
+    const v = Math.round(parseFloat(hEl.value));
+    document.getElementById('h-text').textContent =
+      Number.isFinite(v) ? `${Math.floor(v/12)}'${v%12}"` : '—';
+  };
+  hEl.addEventListener('input', showFeet); showFeet();
+
+  const tabs = { plan: document.getElementById('tab-plan'),
+                 data: document.getElementById('tab-data') };
+  const panes = { plan: document.getElementById('pane-plan'),
+                  data: document.getElementById('pane-data') };
+  Object.entries(tabs).forEach(([key, btn]) => btn.addEventListener('click', () => {
+    Object.entries(tabs).forEach(([k, b]) =>
+      b.setAttribute('aria-selected', String(k === key)));
+    Object.entries(panes).forEach(([k, p]) => p.hidden = (k !== key));
+  }));
+  arm('pickup');
+}
+
+/* ---------------- live trucks ----------------
+   Polled GeoJSON, not vector tiles: tiles are served with max-age=300, so a
+   "live" truck drawn from a tile could be five minutes behind the road. A 5 s
+   poll of /v1/track/live is both fresher and cheaper — a fleet is tens of
+   points, not thousands.
+
+   Two states, drawn differently on purpose. `live` is a fix newer than the
+   API's stale_after_seconds; `stale` is a device that stopped reporting, and it
+   is hollowed out rather than hidden, because "this truck was here 40 minutes
+   ago and has gone quiet" is information a dispatcher needs — while drawing it
+   as solid would be a lie about where the truck is now. */
+const LIVE_POLL_MS = 5000;
+let liveTimer = null, trailFor = null;
+
+function initLive() {
+  map.addSource('live-trucks', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  });
+  map.addSource('live-trail', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  });
+  map.addLayer({
+    id: 'live-trail', type: 'line', source: 'live-trail',
+    paint: { 'line-color': '#38bdf8', 'line-width': 3, 'line-opacity': .75 }
+  });
+  // Halo first so the marker reads on a dark basemap at any zoom.
+  map.addLayer({
+    id: 'live-trucks-halo', type: 'circle', source: 'live-trucks',
+    paint: {
+      'circle-radius': 11,
+      'circle-color': ['case', ['==', ['get','status'], 'live'], '#38bdf8', '#64748b'],
+      'circle-opacity': .22
+    }
+  });
+  map.addLayer({
+    id: 'live-trucks', type: 'circle', source: 'live-trucks',
+    paint: {
+      'circle-radius': 6,
+      // Hollow = stale. The fill carries "is this now?", never the position.
+      'circle-color': ['case', ['==', ['get','status'], 'live'], '#38bdf8', '#0b1220'],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': ['case', ['==', ['get','status'], 'live'], '#e0f2fe', '#64748b']
+    }
+  });
+  map.on('click', 'live-trucks', async ev => {
+    const p = ev.features[0].properties;
+    new maplibregl.Popup({ closeButton: true })
+      .setLngLat(ev.lngLat)
+      .setHTML(
+        `<div class="pk">Live truck</div>` +
+        `<div class="pt-title">${p.label || p.device_id}</div>` +
+        row('status', p.status) +
+        row('fix age', p.age_seconds === '' ? 'unknown' : `${p.age_seconds}s ago`) +
+        row('speed', p.speed_kph === 'unknown' ? 'unknown' : `${p.speed_kph} km/h`) +
+        row('on route', p.route_ref === 'unknown' ? 'unknown'
+             : `${p.route_ref} · ${p.route_dist_m} m off`) +
+        row('pings / rejected', `${p.ping_count} / ${p.reject_count}`))
+      .addTo(map);
+    trailFor = p.device_id;
+    await refreshTrail();
+  });
+  map.on('mouseenter', 'live-trucks', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'live-trucks', () => map.getCanvas().style.cursor = '');
+}
+
+// Same shape as popupHtml's rows, so a live-truck popup and a fuel-station
+// popup look like the same product.
+const row = (k, v) => `<div class="pr"><span>${k}</span><span>${v}</span></div>`;
+
+async function refreshTrail() {
+  if (!trailFor) return;
+  try {
+    const t = await fetch(`${API}/v1/track/${encodeURIComponent(trailFor)}/trail?minutes=120`)
+      .then(r => r.json());
+    map.getSource('live-trail').setData(
+      t.geometry ? { type:'Feature', geometry:t.geometry, properties:{} }
+                 : { type:'FeatureCollection', features:[] });
+  } catch { /* a failed poll is a skipped frame, not a broken page */ }
+}
+
+async function refreshLive() {
+  let d;
+  try {
+    d = await fetch(`${API}/v1/track/live`).then(r => r.json());
+  } catch {
+    // Leave the last known positions on screen rather than blanking the layer:
+    // a network blip is not every truck disappearing. The age counter keeps
+    // climbing, so a stalled feed becomes visible as staleness.
+    return;
+  }
+  map.getSource('live-trucks').setData({
+    type: 'FeatureCollection',
+    features: d.devices.map(t => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [t.lon, t.lat] },
+      properties: t
+    }))
+  });
+  const el = document.getElementById('live-count');
+  if (el) el.textContent = d.counts.total
+    ? `${d.counts.live} live · ${d.counts.stale} stale`
+    : 'no devices registered';
+
+  // The list replaces map labels: every truck is named and reachable even when
+  // two of them are the same pixel, and "stale" is spelled out rather than
+  // encoded in a colour the reader has to learn.
+  const list = document.getElementById('live-list');
+  if (list) {
+    list.innerHTML = d.devices.length ? d.devices.map(t => `
+      <button class="trk${t.status === 'stale' ? ' stale' : ''}"
+              data-dev="${t.device_id}" data-lon="${t.lon}" data-lat="${t.lat}">
+        <span class="trk-n">${t.label && t.label !== 'unknown' ? t.label : t.device_id}</span>
+        <span class="trk-m">${t.status === 'stale'
+          ? `quiet ${Math.round(t.age_seconds / 60)} min`
+          : `${t.speed_kph === 'unknown' ? '—' : t.speed_kph + ' km/h'}${
+              t.route_ref === 'unknown' ? '' : ' · ' + t.route_ref}`}</span>
+      </button>`).join('')
+      : '<div class="live-note">Register one with <code>track_device.py add</code>, '
+        + 'then open <code>/track</code> on the phone.</div>';
+    list.querySelectorAll('.trk').forEach(b => b.onclick = async () => {
+      map.flyTo({ center: [+b.dataset.lon, +b.dataset.lat], zoom: 11 });
+      trailFor = b.dataset.dev;
+      await refreshTrail();
+    });
+  }
+  if (trailFor) await refreshTrail();
+}
+
+async function boot() {
+  const [reg, inv, cats, fuel] = await Promise.all([
+    fetch(`${API}/v1/tiles`).then(r => r.json()),
+    fetch(`${API}/v1/viewer/inventory`).then(r => r.json()),
+    fetch(`${API}/v1/viewer/categories`).then(r => r.json()),
+    fetch(`${API}/v1/viewer/fuel-latest`).then(r => r.json())
+  ]);
+  LAYERS = reg.layers;
+  LAYERS.forEach(spec => {
+    addLayer(spec); wireInteractions(spec);
+    if (!spec.default_on) styleIdsFor(spec).forEach(id =>
+      map.setLayoutProperty(id, 'visibility', 'none'));
+  });
+  buildLegend(inv);
+  wirePlanner();
+  fillTable(document.getElementById('nonspatial'),
+    inv.datasets.filter(d => !d.mapped).map(d => [d.label, fmt(d.rows)]));
+  fillTable(document.getElementById('categories'),
+    cats.categories.map(c => [c.category, fmt(c.n)]));
+  fillTable(document.getElementById('fuel'),
+    fuel.prices.filter(p => p.price_usd_gal !== null)
+      .sort((a,b) => a.region.localeCompare(b.region)).slice(0,12)
+      .map(p => [`${p.region} · ${p.week_of}`, `$${Number(p.price_usd_gal).toFixed(3)}`]));
+  initLive();
+  await refreshLive();
+  liveTimer = setInterval(refreshLive, LIVE_POLL_MS);
+  updateHud();
+}
+
+map.on('load', boot);
+map.on('moveend', updateHud);
+map.on('idle', updateHud);
+</script>
+</body>
+</html>

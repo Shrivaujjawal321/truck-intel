@@ -7,7 +7,12 @@ import pytest
 
 from tests.conftest import needs_db
 from truckintel.db import get_conn
-from truckintel.loaders import event_lifecycle_upsert, fuel_upsert, snapshot_swap
+from truckintel.loaders import (
+    EmptyPublishRefused,
+    event_lifecycle_upsert,
+    fuel_upsert,
+    snapshot_swap,
+)
 
 SCHEMA = "scratch_loader_test"
 SRC = "test_loader_src"
@@ -88,6 +93,55 @@ def test_snapshot_swap_failure_never_touches_live_table(scratch):
     with get_conn() as conn:
         rows = conn.execute(f"SELECT site_id, run_id FROM {SCHEMA}.sites").fetchall()
     assert rows == [("a", 1)]  # old snapshot still live, untouched
+
+
+def test_snapshot_swap_refuses_to_publish_nothing_over_live_data(scratch):
+    """The 2026-07-23 failure mode: a load that yields no rows swapped an EMPTY
+    table over the live one and returned 0, which callers recorded as success.
+    A truncated upstream file or an aborted spool must never delete a dataset
+    and report that it worked."""
+    with get_conn() as conn:
+        snapshot_swap(conn, f"{SCHEMA}.sites", [_site("a"), _site("b")],
+                      source_id=SRC, run_id=1)
+    with pytest.raises(EmptyPublishRefused):
+        with get_conn() as conn:
+            snapshot_swap(conn, f"{SCHEMA}.sites", iter([]),
+                          source_id=SRC, run_id=2)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT site_id, run_id FROM {SCHEMA}.sites ORDER BY site_id"
+        ).fetchall()
+    assert rows == [("a", 1), ("b", 1)]  # live snapshot untouched
+
+
+def test_snapshot_swap_refuses_below_an_explicit_floor(scratch):
+    """A partial load is as destructive as an empty one — the floor is what
+    separates 'the upstream shrank' from 'the upstream broke'."""
+    with get_conn() as conn:
+        snapshot_swap(conn, f"{SCHEMA}.sites", [_site(str(i)) for i in range(5)],
+                      source_id=SRC, run_id=1)
+    with pytest.raises(EmptyPublishRefused) as excinfo:
+        with get_conn() as conn:
+            snapshot_swap(conn, f"{SCHEMA}.sites", [_site("lonely")],
+                          source_id=SRC, run_id=2, min_rows=4)
+    assert "min_rows floor of 4" in str(excinfo.value)
+    with get_conn() as conn:
+        n = conn.execute(f"SELECT count(*) FROM {SCHEMA}.sites").fetchone()[0]
+    assert n == 5
+
+
+def test_snapshot_swap_allows_empty_publish_when_asked_explicitly(scratch):
+    """min_rows=0 is the documented opt-out for sources where publishing
+    nothing is a real state — it must still work, or callers will reach for
+    the guard-removing fix instead."""
+    with get_conn() as conn:
+        snapshot_swap(conn, f"{SCHEMA}.sites", [_site("a")],
+                      source_id=SRC, run_id=1)
+    with get_conn() as conn:
+        assert snapshot_swap(conn, f"{SCHEMA}.sites", iter([]),
+                             source_id=SRC, run_id=2, min_rows=0) == 0
+    with get_conn() as conn:
+        assert conn.execute(f"SELECT count(*) FROM {SCHEMA}.sites").fetchone()[0] == 0
 
 
 def test_snapshot_swap_rejects_unqualified_target(scratch):

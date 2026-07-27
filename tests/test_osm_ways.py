@@ -10,6 +10,7 @@ deleted by run_id on cleanup (only ours — real audit history is untouched).
 from __future__ import annotations
 
 import importlib.util
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 

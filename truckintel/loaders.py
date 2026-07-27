@@ -21,6 +21,14 @@ from psycopg.types.json import Jsonb
 _IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
+class EmptyPublishRefused(RuntimeError):
+    """A full-table swap would have replaced live data with (near-)nothing.
+
+    Distinct from a generic RuntimeError so callers and tests can assert on
+    the specific refusal rather than string-matching a message.
+    """
+
+
 def _split_target(target: str) -> tuple[str, str]:
     schema, dot, table = target.partition(".")
     if not dot or not _IDENT_RE.match(schema) or not _IDENT_RE.match(table):
@@ -72,6 +80,7 @@ def snapshot_swap(
     *,
     source_id: str,
     run_id: int,
+    min_rows: int = 1,
 ) -> int:
     """Atomic full-table replace for reference datasets (bridges, parking).
 
@@ -79,6 +88,19 @@ def snapshot_swap(
     one transaction RENAME-swap and drop the old table. A failed load never
     touches the live table — that is the point.
     `target` is schema-qualified, e.g. 'core.bridges'. Returns rows published.
+
+    `min_rows` (default 1) is a floor on what may replace a live table. Without
+    it an exhausted iterator swapped an EMPTY table over live data and returned
+    0, which every caller then recorded as a successful run — a truncated
+    upstream file, an aborted spool, or a parser that started yielding nothing
+    would silently delete the dataset and report success. Engine-driven sources
+    are gated on the registry's own `min_rows` before they ever reach here
+    (engine.py); this is the backstop for DIRECT callers (osm_ways_job,
+    businesses conflate) that bypass that layer entirely. Raising rolls back
+    the caller's transaction, so the live table is untouched.
+
+    Pass `min_rows=0` only where publishing nothing is genuinely meaningful —
+    and say why at the call site.
     """
     schema, table = _split_target(target)
     new, old = f"{table}_new", f"{table}_old"
@@ -122,6 +144,15 @@ def snapshot_swap(
                             values.append(row.get(col))
                     copy.write_row(values)
                     published += 1
+
+    # Guard BEFORE the rename: past this point the live table is gone.
+    if published < min_rows:
+        raise EmptyPublishRefused(
+            f"refusing to replace {target}: the load produced {published:,} "
+            f"row(s), below the min_rows floor of {min_rows:,}. The live table "
+            f"is untouched. If publishing this few rows is correct here, pass "
+            f"min_rows explicitly at the call site."
+        )
 
     conn.execute(f'DROP TABLE IF EXISTS "{schema}"."{old}"')
     conn.execute(f'ALTER TABLE "{schema}"."{table}" RENAME TO "{old}"')

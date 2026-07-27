@@ -1,0 +1,16 @@
+# truck-intel: delete tracking pings older than the retention window.
+#
+# Retention is a window, not an archive. One truck pinging every 10 s produces
+# ~8,600 rows a day, so an unbounded core.truck_positions grows until the disk
+# decides the policy for us. 30 days is the default in scripts/track_device.py;
+# change it there and here together.
+[Unit]
+Description=truck-intel tracking retention sweep (prune old pings)
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python scripts/track_device.py prune --days 30
+Nice=10
+IOSchedulingClass=idle

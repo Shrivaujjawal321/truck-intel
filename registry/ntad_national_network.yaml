@@ -1,0 +1,40 @@
+# BTS/FHWA NTAD "National Network" — ArcGIS FeatureServer root, verified live
+# 2026-07-23:
+#   GET .../FeatureServer/0?f=json                              -> 200, geometryType
+#     esriGeometryPolyline, maxRecordCount 2000, field NN present.
+#   .../0/query?where=1=1&returnCountOnly=true&f=json           -> count 478,999
+#   .../0/query?where=NN>0&returnCountOnly=true&f=json          -> count 454,830
+#   one NN=1 feature: ID=12353 ROUTEID='H3' SIGN1='I3' SIGNT1='I' SIGNN1='3'
+#     LNAME=' ' (blank) STFIPS=15 CTFIPS=3 YEAR=2018 AADT_COM=494.
+#
+# WHAT THIS IS: the truck-DESIGNATED route spine. Highways where STAA trucks
+# have federal access under 23 CFR Part 658 Appendix A / STAA 1982. This is the
+# truck network as a matter of LAW, not a filter over general roads. The parser
+# keeps ONLY NN>0 (454,830) and drops the 24,169 NN=0 rows carried in the same
+# layer but NOT on the National Network.
+#
+# LICENSE: US Government work, 17 U.S.C. §105 — unrestricted public use (read
+# from the layer's own copyrightText). Keyless.
+#
+# HONESTY: observed_at = 2018 (every row's YEAR field), never the download date.
+# The service claims a 2020-12-22 vintage but the rows say 2018; the record
+# wins. Layer metadata: "should not be used for truck size and weight
+# enforcement purposes or for navigation" — advisory routing only.
+id: ntad_national_network
+name: NTAD National Network (STAA truck-designated highways, BTS/FHWA)
+owner: Bureau of Transportation Statistics (BTS) / Federal Highway Administration (FHWA), US DOT
+url: https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Network/FeatureServer
+kind: arcgis
+load_pattern: snapshot_swap
+parser: national_network        # truckintel/parsers/national_network.py
+target: core.truck_routes       # §5.1 allow-list (registry.SNAPSHOT_TARGETS)
+schedule_minutes: 10080         # weekly check; federal layer changes annual-ish
+license: US public domain (17 U.S.C. §105)
+attribution: "Bureau of Transportation Statistics (BTS) / FHWA, US DOT — NTAD National Network"
+slo_hours: 9490                 # ~13 months; matches the other annual federal layers
+gates:
+  min_rows: 440000              # NN>0 is 454,830; floor leaves headroom for normal churn
+  max_row_delta_pct: 10
+  geometry_valid_pct: 98        # systematic coord drift must not publish
+  required_fields: [route_id, geom_wkt]   # gate 1: no PK or no geometry -> honest reject
+auth: null

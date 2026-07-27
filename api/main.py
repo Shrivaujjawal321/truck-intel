@@ -17,7 +17,11 @@ from api import (
     routes_meta,
     routes_parking,
     routes_places,
+    routes_route,
+    routes_tiles,
+    routes_track,
     routes_tunnels,
+    routes_viewer,
 )
 
 app = FastAPI(
@@ -36,6 +40,10 @@ for _router in (
     routes_fuel_stations.router,
     routes_places.router,
     routes_meta.router,
+    routes_route.router,
+    routes_tiles.router,
+    routes_track.router,
+    routes_viewer.router,
 ):
     app.include_router(_router)
 
@@ -65,4 +73,11 @@ def health():
         "database": "up",
         "last_run_at": last_run,  # newest ops.source_runs row; null = engine never ran
         "last_run_age_seconds": round(age, 1) if age is not None else None,
+        # Read routes hold a read-only session. Tracking ingest is the one write
+        # path; this reports whether it is using the restricted login or falling
+        # back to the owner's credentials, so the posture is observable instead
+        # of assumed. See truckintel.config.track_database_url.
+        "tracking_write_role": (
+            "narrow" if routes_track.track_role_is_narrow() else "owner_fallback"
+        ),
     }

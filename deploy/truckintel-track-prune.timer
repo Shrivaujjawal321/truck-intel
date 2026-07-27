@@ -1,0 +1,14 @@
+# Fires truckintel-track-prune.service daily at 03:10 local — just before the
+# nightly quality pass (03:30), so the ping table is already trimmed when the
+# rest of the nightly work starts.
+[Unit]
+Description=truck-intel tracking retention timer (daily 03:10 local)
+
+[Timer]
+OnCalendar=*-*-* 03:10:00
+RandomizedDelaySec=10m
+AccuracySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+# truck-intel: weekly OSM POI refresh — fuel stations, rest areas, weigh points.
+#
+# Fetches the Geofabrik US extract only when its published md5 has changed, then
+# re-runs the POI pass and re-derives the nearest-truck-route columns the fuel
+# map layer filters on. An unchanged week costs one small HTTP GET.
+#
+# Why weekly and not daily: fuel PRICES change daily and are handled by
+# truckintel-aaa-prices.timer + the engine's eia_diesel schedule. Station
+# geometry does not move overnight, and re-downloading 12 GB every 24 h to change
+# a handful of rows would be cost without benefit. See the module docstring in
+# scripts/osm_pois_refresh.py.
+[Unit]
+Description=truck-intel weekly OSM POI refresh (fuel / rest / weigh)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python scripts/osm_pois_refresh.py
+# A 12 GB download plus a full PBF pass; generous but not unbounded, so a stuck
+# fetch cannot hold the slot until next week.
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=idle

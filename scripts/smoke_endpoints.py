@@ -73,8 +73,13 @@ SWEEP: list[tuple[str, dict, bool, str]] = [
 PROBES: list[tuple[str, dict, bool, str]] = [
     ("/v1/health", {}, False, "liveness"),
     ("/v1/meta/coverage", {}, False, "per-source coverage + freshness"),
-    ("/v1/tunnels", {"limit": 5}, False, "NTI tunnels"),
-    ("/v1/parking", {"limit": 5}, False, "NTAD truck parking"),
+    # Both require a bbox (the 4x4-degree cap applies to every spatial read), so
+    # probing them without one asserted a 200 that the API is right to refuse —
+    # two permanent FAILs that said nothing about coverage. NYC carries both
+    # river tunnels and truck parking, so a real bbox exercises real rows.
+    ("/v1/tunnels", {"bbox": REGIONS["NYC"], "limit": 5}, False, "NTI tunnels"),
+    ("/v1/parking", {"bbox": REGIONS["NYC"], "limit": 5}, False,
+     "NTAD truck parking"),
     ("/v1/fuel/prices", {"limit": 5}, False, "EIA diesel prices"),
     ("/v1/bridges", {"bbox": REGIONS["DE"], "limit": 5,
                      "max_clearance_lt_in": 162}, False,
@@ -88,6 +93,10 @@ PROBES: list[tuple[str, dict, bool, str]] = [
      "WZDx work zones"),
     ("/v1/live/chain-controls", {"bbox": REGIONS["SIERRA"], "limit": 5}, False,
      "Caltrans CWWP2"),
+    # Tracking reads. EMPTY is the correct answer with no devices registered —
+    # the sweep reports EMPTY separately from OK, so a fleet-less install is not
+    # mistaken for a broken endpoint.
+    ("/v1/track/live", {}, False, "live truck positions (own-GPS ingest)"),
 ]
 
 # Probes that must be REJECTED. An API that quietly serves a garbage or
@@ -136,6 +145,10 @@ def _count_of(payload) -> int | None:
             return len(payload["features"])
         if isinstance(payload.get("sources"), list):
             return len(payload["sources"])
+        # /v1/track/live — a fleet, not a feature collection. Counted so "no
+        # trucks registered" reports as EMPTY rather than "not applicable".
+        if isinstance(payload.get("devices"), list):
+            return len(payload["devices"])
     return None
 
 

@@ -656,6 +656,11 @@ def _execute(src: dict, run_id: int) -> None:
             published = snapshot_swap(
                 conn, _resolve_snapshot_target(src), ok_rows,
                 source_id=source_id, run_id=run_id,
+                # step-6 already gated on len(ok_rows); passing the source's
+                # own floor down makes the loader's backstop agree with the
+                # registry instead of falling back to a generic 1, and catches
+                # any divergence between rows counted and rows actually COPYed.
+                min_rows=int(min_rows) if min_rows is not None else 1,
             )
             # Ruling §3.1-10: every successful swap re-enqueues the quality
             # rescore job (same transaction as the publish — they land or
