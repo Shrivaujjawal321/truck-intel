@@ -187,6 +187,17 @@ INSERT INTO ops.sources
     (source_id, name, owner, kind, load_pattern, schedule_minutes, slo_hours,
      enabled, verify_status)
 VALUES
+    -- route_rebuild MUST be seeded here, not by its own script on first run.
+    -- ops.job_queue.source_id has a foreign key to this table, and the
+    -- post-swap hook that enqueues it is SAVEPOINT-guarded: a missing seed row
+    -- makes the insert violate the FK, roll back to the savepoint and return
+    -- False. The publish would still succeed and the rebuild would silently
+    -- never be queued — the exact failure the hook exists to prevent, hidden
+    -- inside the safety net meant to protect the publish.
+    ('route_rebuild',
+     'Derived: routable graph + limits + viewer geometry from core.truck_routes',
+     'truck-intel routing track',
+     'derived', 'derived', NULL, 400, TRUE, 'verified'),
     ('osm_pois',
      'Derived: OSM POI mirrors (fuel/rest/weigh) from Geofabrik US PBF -> osm.*',
      'truck-intel wave-2 OSM track',

@@ -49,6 +49,7 @@ understates every shop.
 from __future__ import annotations
 
 import argparse
+import csv
 import html
 import json
 import os
@@ -1443,6 +1444,83 @@ def fill_report(*, record: bool = True) -> dict[str, tuple[int, int]]:
     return {m: (n, total) for m, n in now.items()}
 
 
+# ---------------------------------------------------------------------- CSV
+# Columns in the order a human reads them: who and where first, how to reach
+# them second, then the evidence. `_ARRAY_COLS` are flattened to '; '-joined
+# text — a CSV cell cannot hold a list, and Postgres's own '{a,b}' braces would
+# make a spreadsheet show literal punctuation.
+CSV_COLUMNS = [
+    "shop_id", "name", "category", "brand", "chain_brand",
+    "address", "city", "state", "zip", "lat", "lon",
+    "phone", "website", "email", "socials",
+    "opening_hours", "open_24h", "hours_source",
+    "route_ref", "route_name", "route_dist_m", "on_route_5km",
+    "verification_status", "confidence", "n_independent", "source_orgs",
+    "licence_verified", "licence_id", "licence_expiry", "licence_expired",
+    "licence_rule", "osm_match_id", "osm_match_m",
+    "flags", "gmaps_url", "observed_at",
+]
+_ARRAY_COLS = {"socials", "source_orgs", "flags"}
+
+
+def render_csv() -> Path:
+    """Every shop, every enrichment field, one row each.
+
+    UTF-8 **with BOM**: shop names carry accents and Excel on Windows reads a
+    plain UTF-8 CSV as mojibake. The BOM is invisible to Excel, LibreOffice,
+    pandas and DuckDB alike, so it costs nothing and fixes the one reader most
+    likely to open this.
+
+    An empty cell means UNKNOWN, never "no" — the same rule the rest of this
+    layer follows. Booleans are written true/false only where the source
+    actually said so; where it did not, the cell is blank rather than false.
+    """
+    ensure_schema()
+    with get_conn() as pg:
+        rows = pg.execute(f"""
+            SELECT {', '.join(CSV_COLUMNS)}
+            FROM core.mechanic_shops
+            ORDER BY state NULLS LAST, city, name
+        """).fetchall()
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out = OUT_DIR / "truck_mechanics.csv"
+    with out.open("w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh, quoting=csv.QUOTE_MINIMAL)
+        w.writerow(CSV_COLUMNS)
+        for row in rows:
+            cells = []
+            for col, val in zip(CSV_COLUMNS, row):
+                if val is None:
+                    cells.append("")                 # blank = unknown
+                elif col in _ARRAY_COLS:
+                    cells.append("; ".join(str(v) for v in val))
+                elif isinstance(val, bool):
+                    cells.append("true" if val else "false")
+                elif col == "observed_at":
+                    cells.append(val.date().isoformat())
+                else:
+                    cells.append(str(val))
+            w.writerow(cells)
+
+    filled = {c: 0 for c in CSV_COLUMNS}
+    for row in rows:
+        for col, val in zip(CSV_COLUMNS, row):
+            if val not in (None, "", []):
+                filled[col] += 1
+    thin = [f"{c} {100 * n / max(len(rows), 1):.0f}%"
+            for c, n in filled.items() if n < len(rows) * 0.5]
+    print(f"[csv] wrote {out} ({len(rows):,} shops × {len(CSV_COLUMNS)} columns, "
+          f"{out.stat().st_size / 1048576:.1f} MB)", flush=True)
+    if thin:
+        # Say which columns are mostly empty, here, at write time — a reader
+        # who opens the file and sees blanks should already know which are
+        # sparsely published rather than assume the export dropped them.
+        print(f"[csv] sparsely populated (blank = unknown): {', '.join(thin)}",
+              flush=True)
+    return out
+
+
 def render_html() -> Path:
     with get_conn() as pg:
         with pg.cursor() as cur:
@@ -1750,6 +1828,9 @@ def main():
                          "Overture --pull. Costs minutes, not hours, so the "
                          "cheap sources (licence registries, chain feeds, OSM "
                          "edits) are picked up daily instead of monthly.")
+    ap.add_argument("--csv", action="store_true",
+                    help="write truck_mechanics.csv — every shop, every "
+                         "enrichment column, one row each")
     ap.add_argument("--html", action="store_true")
     ap.add_argument("--release", default=None)
     ap.add_argument("--local-dir", default=None,
@@ -1763,7 +1844,8 @@ def main():
         print(f"[skip] {exc} — nothing to do", flush=True)
         return 0
     do_all = not (a.pull or a.enrich or a.licence or a.chains or a.osm_match
-                  or a.cbp or a.verify or a.html or a.fill_report or a.refresh)
+                  or a.cbp or a.verify or a.html or a.csv or a.fill_report
+                  or a.refresh)
     # --refresh is do_all minus the 3-hour Overture scan. Overture publishes
     # monthly, so pulling it daily would burn a national parquet scan to
     # rewrite identical rows AND reset observed_at, making stale data look
@@ -1789,6 +1871,8 @@ def main():
             coverage()
         if a.fill_report or cheap:
             fill_report()
+        if a.csv or cheap:
+            render_csv()
         if a.html or cheap:
             render_html()
     finally:

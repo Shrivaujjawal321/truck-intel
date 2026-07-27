@@ -27,3 +27,16 @@ ExecStart=%h/.local/bin/uv run python scripts/fuel_verify.py
 ExecStart=%h/.local/bin/uv run python scripts/fuel_enrich.py
 Nice=15
 IOSchedulingClass=idle
+
+# Kernel ceilings, added 2026-07-27. `Nice`/`IOSchedulingClass` only lower
+# PRIORITY — they never stop a job consuming the machine, which is what
+# happened when an idle-classed OSM pass took the laptop from 11 GB free to
+# 1.6 GB and had to be killed by hand. These bound a RUNAWAY; the admission
+# gate in truckintel/resources.py is the first line of defence.
+#
+# These MUST sit inside [Service]. Appended after [Install] they parse as
+# [Install] directives, systemd ignores them, and `systemctl show` reports
+# MemoryMax=infinity while the unit file plainly reads MemoryMax=6G.
+MemoryMax=4G
+MemorySwapMax=0
+CPUQuota=60%

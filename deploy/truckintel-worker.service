@@ -11,5 +11,19 @@ ExecStart=%h/.local/bin/uv run python -m truckintel.engine worker
 Restart=on-failure
 RestartSec=10
 
+# Kernel ceilings, added 2026-07-27. `Nice`/`IOSchedulingClass` only lower
+# PRIORITY — they never stop a job consuming the machine, which is what
+# happened when an idle-classed OSM pass took the laptop from 11 GB free to
+# 1.6 GB and had to be killed by hand. These bound a RUNAWAY; the admission
+# gate in truckintel/resources.py is the first line of defence.
+#
+# These MUST sit inside [Service]. Appended after [Install] they parse as
+# [Install] directives, systemd ignores them, and `systemctl show` reports
+# MemoryMax=infinity while the unit file plainly reads MemoryMax=6G.
+MemoryMax=6G
+MemorySwapMax=0
+CPUQuota=70%
+
 [Install]
 WantedBy=default.target
+

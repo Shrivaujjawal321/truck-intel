@@ -157,6 +157,33 @@ def check_queue_backlog(max_age_h: int) -> list[dict]:
     """, (max_age_h,))]
 
 
+def check_stuck_deferrals(max_h: int) -> list[dict]:
+    """A job the resource gate has been refusing for a whole day.
+
+    A single deferral is correct and must stay silent — the machine was busy,
+    the job waits, the next tick retries. But a job that can NEVER start is a
+    real outage wearing a deferral's clothes: a disk that never frees up, a
+    load average permanently above the ceiling, a laptop left on battery.
+
+    This is the counterpart to the gate in truckintel/resources.py. Without it,
+    'defer, never fail' would mean 'never run, never say so'.
+    """
+    return [{
+        "key": f"deferred/{source_id}",
+        "severity": "high",
+        "text": (f"{source_id}: queued and repeatedly DEFERRED for "
+                 f"{age.days * 24 + age.seconds // 3600}h — the resource gate "
+                 f"has never let it start.\n    last reason: {(msg or '')[:200]}"),
+    } for source_id, age, msg in _rows("""
+        SELECT source_id, now() - enqueued_at, message
+        FROM ops.job_queue
+        WHERE status = 'queued'
+          AND message LIKE 'deferred%%'
+          AND enqueued_at < now() - (%s || ' hours')::interval
+          AND source_id NOT LIKE %s
+    """, (max_h, TEST_PREFIX_LIKE))]
+
+
 def load_state() -> dict:
     try:
         return json.loads(STATE_FILE.read_text())
@@ -178,6 +205,9 @@ def main() -> int:
                     help="a run still 'running' this long is a dead worker "
                          "(longest real job here is ~3 h)")
     ap.add_argument("--backlog-hours", type=int, default=2)
+    ap.add_argument("--deferred-hours", type=int, default=24,
+                    help="a job the resource gate has refused for this long "
+                         "is an outage, not a busy moment")
     ap.add_argument("--cooldown-hours", type=int, default=12,
                     help="do not re-send a finding already alerted this recently")
     ap.add_argument("--dry-run", action="store_true",
@@ -189,7 +219,8 @@ def main() -> int:
                 + check_never_succeeded()
                 + check_stuck_runs(args.stuck_hours)
                 + check_alerting_disarmed()
-                + check_queue_backlog(args.backlog_hours))
+                + check_queue_backlog(args.backlog_hours)
+                + check_stuck_deferrals(args.deferred_hours))
 
     if not findings:
         print("[ops-watch] clean — no findings", flush=True)

@@ -19,7 +19,7 @@ import subprocess
 import psycopg
 from psycopg.types.json import Jsonb
 
-from truckintel import jobs, quality
+from truckintel import jobs, quality, resources
 from truckintel.config import load_dotenv, raw_dir
 from truckintel.db import get_conn
 from truckintel.loaders import event_lifecycle_upsert, fuel_upsert, snapshot_swap
@@ -725,6 +725,7 @@ _DERIVED_RUNNERS: dict[str, list[str]] = {
     # cost 50 minutes to rebuild an identical graph.
     ROUTE_REBUILD_SOURCE_ID: ["scripts/route_rebuild.py", "--if-stale"],
     "osm_pois": ["scripts/osm_extract.py", "--job", "pois"],
+    # (see _RESOURCE_GATED below — every runner here is gated by default)
     "osm_ways": ["scripts/osm_extract.py", "--job", "ways"],
     # businesses rebuild chain (ruling §3.1-6): the two pulls refill their own
     # staging tables, then the conflate rebuilds core.businesses from staging.
@@ -736,6 +737,15 @@ _DERIVED_RUNNERS: dict[str, list[str]] = {
     "overture_places": ["scripts/businesses_pipeline.py", "--pull-overture"],
     "fsq_places": ["scripts/businesses_pipeline.py", "--pull-fsq", "--fsq-mirror"],
     "businesses_conflate": ["scripts/businesses_pipeline.py", "--conflate"],
+}
+
+
+# Which derived runners the resource gate applies to. Default TRUE (gate it):
+# every entry in _DERIVED_RUNNERS today is measured in tens of minutes to hours.
+# Set False for a runner that is genuinely cheap — gating a job that finishes in
+# seconds adds a failure mode and saves nothing.
+_RESOURCE_GATED: dict[str, bool] = {
+    RESCORE_SOURCE_ID: False,   # rescore is an in-database UPDATE, seconds
 }
 
 
@@ -787,6 +797,22 @@ def _run_derived_job(job: dict) -> None:
                 "(not created yet — honest failed run, no work done)",
             )
         return
+    # Resource gate. Every derived runner here is a HEAVY job — the OSM passes
+    # run for hours and route_rebuild for ~50 minutes — and `Nice` only lowers
+    # priority once started, it never declines to start. On 2026-07-27 an
+    # idle-classed OSM pass still took the machine from 11 GB free to 1.6 GB
+    # and had to be killed by hand.
+    #
+    # 'deferred' is NOT a failure: the job stays QUEUED and the next tick
+    # retries it. Marking it failed would burn the backoff and eventually trip
+    # the circuit breaker over a laptop that was merely busy.
+    if _RESOURCE_GATED.get(source_id, True):
+        may_start, why = resources.check(work_path=_REPO_ROOT)
+        if not may_start:
+            print(f"[derived] {source_id}: {why}", flush=True)
+            with get_conn() as conn:
+                jobs.defer_job(conn, job["job_id"], why)
+            return
     proc = subprocess.run(
         [sys.executable, *argv],
         cwd=_REPO_ROOT, env=_runner_env(),

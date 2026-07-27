@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import tempfile
 import sys
 import time
 from pathlib import Path
@@ -116,12 +117,39 @@ def staleness() -> tuple[bool, str]:
                    f"routes publish {routes_at:%Y-%m-%d %H:%M}")
 
 
-def _run_step(label: str, kind: str, payload: str) -> None:
+def _pin_sql(tmpdir: Path) -> dict[str, Path]:
+    """Copy every SQL step into a private directory before the rebuild starts.
+
+    DEPLOY SAFETY. This job runs ~50 minutes and shells out to sql/*.sql
+    BETWEEN steps, reading each file from the working tree at the moment it is
+    needed. A `git pull` landing mid-rebuild would hand the later steps a
+    different schema from the one the earlier steps built — a graph that is
+    half one version and half another, with every step reporting success.
+
+    Python's own modules are already immune (they were imported at start); the
+    SQL was the hole. Pinning here means a rebuild always completes on the code
+    it began with, and the NEXT run picks up the change — which is the
+    behaviour Boss asked for on 2026-07-27: a push must land, and not disturb
+    work already in flight.
+    """
+    pinned: dict[str, Path] = {}
+    for label, kind, payload in STEPS:
+        if kind != "sql":
+            continue
+        dest = tmpdir / Path(payload).name
+        dest.write_text((REPO / payload).read_text())
+        pinned[payload] = dest
+    return pinned
+
+
+def _run_step(label: str, kind: str, payload: str,
+              pinned: dict[str, Path] | None = None) -> None:
     t0 = time.time()
     print(f"[rebuild] {label} …", flush=True)
     if kind == "sql":
+        path = str((pinned or {}).get(payload, REPO / payload))
         cmd = ["./scripts/db_psql.sh", "-v", "ON_ERROR_STOP=1", "-q",
-               "-f", payload]
+               "-f", path]
     else:
         cmd = [sys.executable, payload]
     proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
@@ -157,8 +185,13 @@ def rebuild() -> int:
           flush=True)
     t0 = time.time()
     try:
-        for label, kind, payload in STEPS:
-            _run_step(label, kind, payload)
+        with tempfile.TemporaryDirectory(prefix="route-rebuild-") as tmp:
+            pinned = _pin_sql(Path(tmp))
+            print(f"[rebuild] pinned {len(pinned)} SQL step(s) — a deploy "
+                  f"landing mid-run cannot change what this rebuild executes",
+                  flush=True)
+            for label, kind, payload in STEPS:
+                _run_step(label, kind, payload, pinned)
         with get_conn() as conn:
             edges = conn.execute("SELECT count(*) FROM route.edges").fetchone()[0]
             nodes = conn.execute("SELECT count(*) FROM route.nodes").fetchone()[0]

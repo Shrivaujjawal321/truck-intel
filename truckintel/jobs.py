@@ -174,3 +174,27 @@ def finish_job(
         "WHERE job_id = %s",
         (status, message, job_id),
     )
+
+
+def defer_job(conn: psycopg.Connection, job_id: int, message: str) -> None:
+    """Release a claimed job back to 'queued' because the machine is busy.
+
+    NOT finish_job('failed'). A deferral means "not now", and recording it as a
+    failure would be wrong three times over: it burns the exponential backoff in
+    _ENQUEUE_SQL, it counts toward the circuit breaker's consecutive-failure
+    threshold (five deferrals on a busy laptop would OPEN the circuit on a
+    perfectly healthy feed), and it would alert.
+
+    started_at is cleared as well as the status: leaving it set makes the row
+    look like a run that began and never ended, which is exactly the shape the
+    stale-run reaper hunts for — it would 'reap' a job that was never running.
+
+    The message carries the measurements that caused the deferral, so a job
+    that keeps deferring can be argued with from the record rather than guessed
+    at.
+    """
+    conn.execute(
+        "UPDATE ops.job_queue SET status = 'queued', started_at = NULL, "
+        "message = %s WHERE job_id = %s",
+        (message[:1000], job_id),
+    )
