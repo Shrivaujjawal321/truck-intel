@@ -1,19 +1,43 @@
-# Fires truckintel-pois.service weekly, Sunday 02:00 local.
+# Fires truckintel-pois.service MONTHLY, on the 8th at 02:00 local.
 #
-# Why Sunday 02:00: it is clear of the nightly quality pass (03:30), the daily
-# AAA price fetch (06:15) and the monthly businesses rebuild (1st, 04:30), so a
-# 12 GB download and a full PBF pass never compete with another heavy job for
-# disk. Sunday because a week's worth of OSM edits is the unit of change this
-# job exists to pick up.
+# WHY MONTHLY, NOT WEEKLY (changed 2026-07-28)
+# --------------------------------------------
+# This job downloads a 12 GB Geofabrik extract and runs a ~3 hour PBF pass to
+# publish exactly three tables:
 #
-# Persistent=true: a laptop that was off on Sunday refreshes on next boot rather
-# than silently skipping the week — a missed refresh should be visible in the
-# data's observed_at, not hidden by the scheduler.
+#     osm.fuel_stations   108,056
+#     osm.rest_areas        5,452
+#     osm.weigh_points      3,773
+#
+# Geofabrik republishes the US extract continuously, so the FILE's md5 differs
+# almost every week and the conditional-download check always says "changed" —
+# even though what changed was a footpath in Wyoming and none of our 117k POIs
+# moved. We were spending 12 GB and three hours weekly to discover that.
+#
+# Rest areas and weigh stations are physical infrastructure; they change on a
+# scale of years. Fuel stations do open and close, but not weekly at a rate
+# that changes an answer. Monthly keeps them current enough for what they are,
+# and every row's honest `observed_at` still reports its real vintage rather
+# than implying same-week freshness.
+#
+# The 8th, not the 1st or 2nd: truckintel-businesses runs on the 1st (04:30)
+# and truckintel-mechanics on the 2nd (05:00), both national parquet scans. A
+# week's separation means three heavy monthly jobs never contend for the same
+# disk, which is how a laptop-hosted pipeline falls over.
+#
+# WHAT DID NOT MOVE: the live layers. Work zones, weather alerts and chain
+# controls stay at 10-15 minutes because they genuinely change every cycle —
+# measured over six days, 43 runs produced 43 distinct payloads. Diesel prices
+# stay daily. This slowed the one job whose data does not change at its old
+# cadence, and nothing else.
+#
+# Persistent=true: a laptop that was off on the 8th refreshes on next boot
+# rather than skipping the month.
 [Unit]
-Description=truck-intel weekly OSM POI refresh timer (Sun 02:00 local)
+Description=truck-intel monthly OSM POI refresh timer (8th @ 02:00 local)
 
 [Timer]
-OnCalendar=Sun *-*-* 02:00:00
+OnCalendar=*-*-08 02:00:00
 RandomizedDelaySec=30m
 AccuracySec=10m
 Persistent=true

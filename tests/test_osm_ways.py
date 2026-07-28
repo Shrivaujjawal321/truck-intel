@@ -311,6 +311,21 @@ def delaware_scratch():
         if run_ids:
             conn.execute("DELETE FROM ops.source_runs WHERE run_id = ANY(%s)",
                          (run_ids,))
+    # Remove the spool this test created, next to the Delaware PBF.
+    #
+    # osm_ways_job._cleanup_workdir KEEPS any workdir whose phase A completed,
+    # whatever keep_workdir says — a deliberate rule, and the right one: it was
+    # added after a clean 3.4-hour US pass was destroyed by a failure path on
+    # 2026-07-23, and a completed pass is not cheap to redo.
+    #
+    # But the Delaware pass finishes in seconds, so its spool is worth nothing
+    # and the rule just accumulates 58 MB per test run into data/pbf/. That is
+    # how 25 workdirs and 26 GB piled up before 2026-07-28. Fixed HERE rather
+    # than by weakening the production rule: the test owns what the test made.
+    import shutil
+    for spool in DELAWARE_PBF.parent.glob(
+            f".osmways-work-{DELAWARE_PBF.stem}-run*"):
+        shutil.rmtree(spool, ignore_errors=True)
 
 
 @needs_db

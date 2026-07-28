@@ -379,7 +379,17 @@ def run_pois(pbf: Path = DEFAULT_PBF, *, targets: dict[str, str] | None = None,
     if not pbf.exists():
         raise FileNotFoundError(f"PBF not found: {pbf}")
     tgt = {**POIS_TARGETS, **(targets or {})}
-    kinds = tuple(only) if only else ("fuel", "rest", "weigh", "repair")
+    # 'repair' is NOT in the default set, deliberately. osm.truck_repair is
+    # owned by scripts/osm_overpass.py, which refreshes it DAILY from a replica
+    # minutes old; this PBF is a weekly snapshot. Leaving repair in the default
+    # meant the Sunday POI refresh would republish 763 rows from week-old data
+    # over the fresh ones, flipping their source_id and observed_at backwards
+    # until the next morning's Overpass run undid it.
+    #
+    # The PBF path still works and is still tested — `--only repair` — so it
+    # remains the fallback if Overpass is ever unavailable. It is just not what
+    # the schedule reaches for.
+    kinds = tuple(only) if only else ("fuel", "rest", "weigh")
     unknown = set(kinds) - set(tgt)
     if unknown:
         raise ValueError(f"unknown --only kind(s): {sorted(unknown)}")

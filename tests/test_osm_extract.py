@@ -227,7 +227,10 @@ def scratch():
 def test_run_pois_synthetic_end_to_end(mini_pbf, tmp_path, scratch):
     published = ox.run_pois(mini_pbf, targets=scratch, source_id=SRC,
                             node_cache=tmp_path / "cache.bin")
-    assert published == {"fuel": 5, "rest": 1, "weigh": 1, "repair": 3}
+    # 'repair' is deliberately NOT in the default set: osm.truck_repair is
+    # owned by the DAILY Overpass job, and republishing it here from a weekly
+    # PBF snapshot would push fresher rows backwards every Sunday.
+    assert published == {"fuel": 5, "rest": 1, "weigh": 1}
 
     with get_conn() as conn:
         fuel = conn.execute(
@@ -250,7 +253,7 @@ def test_run_pois_synthetic_end_to_end(mini_pbf, tmp_path, scratch):
             "WHERE source_id = %s ORDER BY run_id DESC LIMIT 1", (SRC,)
         ).fetchone()
     assert status == "success"
-    assert rows_published == 10   # 5 fuel + 1 rest + 1 weigh + 3 repair
+    assert rows_published == 7   # 5 fuel + 1 rest + 1 weigh (repair is not default)
     assert "pbf_replication_timestamp" in message
 
 
@@ -299,3 +302,20 @@ def test_run_pois_delaware_full_extract(tmp_path, scratch):
     # one honest vintage across the whole extract = the PBF replication stamp
     assert len(vintages) == 1 and vintages[0][0] is not None
     assert not (tmp_path / "de.nodecache").exists()  # cache cleaned up
+
+
+@needs_db
+def test_repair_still_publishes_when_asked_for_explicitly(mini_pbf, tmp_path, scratch):
+    """The PBF path for truck repair is the FALLBACK, not the schedule.
+
+    It must keep working — if Overpass is ever unavailable, `--only repair` is
+    how the layer gets rebuilt — so removing it from the default set must not
+    quietly remove the capability.
+    """
+    published = ox.run_pois(mini_pbf, targets=scratch, source_id=SRC,
+                            node_cache=tmp_path / "cache2.bin",
+                            only=("repair",))
+    assert published == {"repair": 3}
+    with get_conn() as conn:
+        n = conn.execute(f"SELECT count(*) FROM {scratch['repair']}").fetchone()[0]
+    assert n == 3

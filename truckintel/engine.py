@@ -806,7 +806,12 @@ def _run_derived_job(job: dict) -> None:
     # 'deferred' is NOT a failure: the job stays QUEUED and the next tick
     # retries it. Marking it failed would burn the backoff and eventually trip
     # the circuit breaker over a laptop that was merely busy.
-    if _RESOURCE_GATED.get(source_id, True):
+    # '_'-prefixed ids are test fixtures. They must NEVER be gated: their
+    # runners are synthetic and finish instantly, and gating them makes the
+    # suite non-deterministic — it passed on an idle laptop and failed under
+    # pytest's own load (load_per_cpu 3.6 against a 1.5 ceiling), which would
+    # have surfaced as a flaky CI job rather than as this bug.
+    if not source_id.startswith("_") and _RESOURCE_GATED.get(source_id, True):
         may_start, why = resources.check(work_path=_REPO_ROOT)
         if not may_start:
             print(f"[derived] {source_id}: {why}", flush=True)

@@ -1,5 +1,8 @@
 {
-  "failing/osm_pois": "2026-07-27T10:24:35.073123+00:00",
-  "failing/osm_ways": "2026-07-27T10:24:35.073123+00:00",
-  "failing/overture_places": "2026-07-27T10:24:35.073123+00:00"
+  "failing/caltrans_cwwp2_cc_d02": "2026-07-27T17:43:39.937920+00:00",
+  "failing/caltrans_cwwp2_cc_d03": "2026-07-27T17:43:39.937920+00:00",
+  "failing/eia_diesel": "2026-07-28T03:41:23.663408+00:00",
+  "failing/nws_alerts": "2026-07-27T17:43:39.937920+00:00",
+  "failing/osm_pois": "2026-07-28T03:41:23.663408+00:00",
+  "failing/route_rebuild": "2026-07-28T03:41:23.663408+00:00"
 }
