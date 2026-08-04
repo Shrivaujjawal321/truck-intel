@@ -486,6 +486,27 @@ def _duck():
     con.execute(f"SET temp_directory='{DUCKDB_TMP}'")
     con.execute("SET threads=4")
     con.execute("INSTALL httpfs; LOAD httpfs;")
+    # The mirror pull reads 81 parquet files over plain HTTP in one query, so
+    # it is exposed to every transient blip for the whole ~20 minutes it runs.
+    # On 2026-08-04 it staged 100,000 rows and then died on "Could not resolve
+    # hostname", losing the batch — DuckDB aborts the pending result and the
+    # COPY rolls back, so partial progress is worth nothing.
+    #
+    # connection_caching is off by default, which means the client can
+    # re-establish (and re-resolve) per request across those 81 files; turning
+    # it on removes most of the lookups that can fail. The stock retry budget
+    # is 3 attempts starting at 100 ms with backoff 4 — about 2 seconds of
+    # cover, shorter than a typical resolver hiccup. 5 attempts from 1 s gives
+    # roughly 85 s instead.
+    #
+    # Caveat worth keeping: http_retries is documented as retrying I/O errors,
+    # and it is not established that a resolver failure is classified as one.
+    # This widens the window and cuts the number of chances to fail; if the
+    # pull dies this way again, the fix is a retry around the whole pull (safe
+    # to do — the staging load TRUNCATEs before COPY, so a rerun is clean).
+    con.execute("SET httpfs_connection_caching=true")
+    con.execute("SET http_retries=5")
+    con.execute("SET http_retry_wait_ms=1000")
     return con
 
 
