@@ -15,6 +15,16 @@ US_BBOXES: tuple[tuple[float, float, float, float], ...] = (
     (-179.9, 51.0, -129.9, 71.5),   # Alaska (east of the antimeridian)
     (-160.6, 18.8, -154.7, 22.5),   # Hawaii
     (-67.6, 17.5, -64.4, 18.6),     # Puerto Rico + USVI
+    # Pacific territories. Added 2026-08-04 after a live NWS coastal-waters
+    # alert west of Guam — POLYGON ((144.38 13.27, ... 144.61 13.28, ...)) —
+    # became the first real reject this gate has produced: 1 of 54,447 cached
+    # rows. It is not junk, it is a US government alert for a US territory,
+    # and the docstring below names widening as the intended response.
+    # Guam + Northern Marianas as one box (Rota/Tinian/Saipan run north to
+    # Farallon de Pajaros at 20.5 N), west edge at 144.2 to hold the offshore
+    # marine zones the alerts are issued for.
+    (144.2, 12.9, 146.2, 20.8),     # Guam + CNMI
+    (-171.2, -14.7, -168.0, -10.8), # American Samoa (southern hemisphere)
 )
 
 # Fields gate 1 additionally requires to parse as floats when required.
