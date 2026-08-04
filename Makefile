@@ -207,10 +207,24 @@ ci: ci-fast
 pipeline-smoke:
 	uv run python scripts/pipeline_smoke.py
 
+# The jobs that reach the network. These get the DNS gate; the rest are
+# DB-only (quality, nightly-checks, track-prune, fuel-verify) or self-healing
+# (api/worker carry Restart=on-failure) and would only pay the latency.
+# ops-watch is here because truckintel.notify delivers over Telegram.
+NET_UNITS := aaa-prices freshness osm-truck-repair mechanics-daily mechanics \
+             pois weekly-digest businesses ops-watch
+
 # Install/refresh the systemd user units from deploy/ and enable the timers.
 install-timers:
 	install -Dm644 deploy/truckintel-*.service deploy/truckintel-*.timer \
 	  -t $(HOME)/.config/systemd/user/
+	@# See deploy/dropins/10-wait-dns.conf: the After=network-online.target in
+	@# every unit is a no-op in the user manager, so Persistent=true catch-up
+	@# runs fire before DNS is up. This is the gate that actually holds.
+	@for u in $(NET_UNITS); do \
+	  install -Dm644 deploy/dropins/10-wait-dns.conf \
+	    $(HOME)/.config/systemd/user/truckintel-$$u.service.d/10-wait-dns.conf; \
+	done
 	systemctl --user daemon-reload
 	systemctl --user enable --now \
 	  truckintel-tick.timer truckintel-freshness.timer truckintel-quality.timer \
