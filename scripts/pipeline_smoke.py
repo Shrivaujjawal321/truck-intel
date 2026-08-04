@@ -70,7 +70,27 @@ DATA_SLO = {
     "eia_diesel": ("fuel prices (EIA, regional, weekly)", timedelta(days=9)),
     "ntad_national_network": ("truck routes (NTAD National Network)", timedelta(days=400)),
     "osm_truck_repair_overpass": ("mechanic corroboration (OSM via Overpass)", timedelta(days=3)),
-    "osm_pois": ("fuel stations (OSM PBF)", timedelta(days=10)),
+    # 45d, not 10d: truckintel-pois.timer went monthly on 2026-07-28 and
+    # EXPECTED_UNITS was updated to 40d while this budget was left behind, so
+    # the job reported STALE for most of every month while running exactly as
+    # designed. check_cadence_beats_budget() below now makes that class of
+    # drift a FAIL instead of leaving it to be noticed by eye.
+    "osm_pois": ("fuel stations (OSM PBF)", timedelta(days=45)),
+    # Same monthly shape as osm_pois and the same 400h budget, so it carried
+    # the same unmeetable contradiction — it simply had no DATA_SLO entry to
+    # report it. OnCalendar=*-*-01.
+    "businesses_conflate": ("business POIs (Overture + FSQ conflation)",
+                            timedelta(days=45)),
+}
+
+# unit stem -> the source_id whose freshness that unit is responsible for.
+# Only units that feed a DATA_SLO entry need to appear; the rest are covered
+# by their own checks.
+UNIT_FEEDS = {
+    "truckintel-aaa-prices": "aaa_daily",
+    "truckintel-osm-truck-repair": "osm_truck_repair_overpass",
+    "truckintel-pois": "osm_pois",
+    "truckintel-businesses": "businesses_conflate",
 }
 
 _OK, _WARN, _FAIL = "PASS", "WARN", "FAIL"
@@ -253,14 +273,64 @@ def check_schedule_beats_slo() -> None:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT source_id, schedule_minutes, slo_hours FROM ops.sources "
-            "WHERE enabled AND schedule_minutes IS NOT NULL "
-            "AND slo_hours IS NOT NULL").fetchall()
+            "WHERE enabled").fetchall()
+    checked = 0
     for source_id, sched_min, slo_h in rows:
+        if slo_h is None:
+            continue
+        if sched_min is None:
+            # Previously these were filtered out in SQL, which silently
+            # exempted 11 of 23 enabled sources — including every derived one,
+            # which is exactly where the cadence lives in a timer rather than
+            # in this column. An unknowable cadence is not a passing check;
+            # it is the reason osm_pois' monthly-vs-16.7d contradiction sat
+            # here unreported. check_cadence_beats_budget() covers the ones
+            # driven by a unit file; the rest are genuinely event-driven.
+            continue
+        checked += 1
         if sched_min / 60.0 > slo_h:
             report(_FAIL, f"schedule {source_id}",
                    f"runs every {sched_min}min but SLO is {slo_h}h — "
                    f"can never be met")
-    report(_OK, "schedule vs SLO", f"{len(rows)} scheduled sources checked")
+    unscheduled = [s for s, m, h in rows if m is None and h is not None
+                   and s not in UNIT_FEEDS.values()]
+    report(_OK, "schedule vs SLO", f"{checked} scheduled sources checked")
+    if unscheduled:
+        report(_WARN, "cadence unknown",
+               f"{len(unscheduled)} enabled source(s) have an SLO but no "
+               f"schedule_minutes and no unit in UNIT_FEEDS, so nothing can "
+               f"prove their budget is reachable: {', '.join(sorted(unscheduled))}")
+
+
+def check_cadence_beats_budget() -> None:
+    """A job's freshness budget must be at least as long as its own cadence.
+
+    check_schedule_beats_slo compares two ops.sources columns, which misses
+    every source whose real cadence lives in a timer file instead — the
+    derived ones. That gap is not hypothetical: truckintel-pois.timer moved to
+    monthly on 2026-07-28, EXPECTED_UNITS was updated to 40d, DATA_SLO's 10d
+    was not, and the result was a FAIL every day for a job that was working.
+
+    Cadence comes from EXPECTED_UNITS, which is the interval the unit-file
+    checks already hold the timer to, so the two cannot drift apart.
+    """
+    for unit, source_id in sorted(UNIT_FEEDS.items()):
+        cadence = EXPECTED_UNITS.get(unit)
+        entry = DATA_SLO.get(source_id)
+        if cadence is None or entry is None:
+            report(_WARN, f"cadence {unit}",
+                   f"maps to {source_id} but one side is missing — "
+                   f"EXPECTED_UNITS={cadence}, DATA_SLO={'set' if entry else None}")
+            continue
+        label, budget = entry
+        if cadence > budget:
+            report(_FAIL, f"cadence {source_id}",
+                   f"{unit} fires at most every {cadence.days}d but the "
+                   f"freshness budget is {budget.days}d — the budget is "
+                   f"unmeetable, so it reports the calendar, not the data")
+        else:
+            report(_OK, f"cadence {source_id}",
+                   f"fires every {cadence.days}d within {budget.days}d budget")
 
 
 def check_fill_history() -> None:
@@ -322,6 +392,7 @@ def main() -> int:
     check_data_freshness()
     check_alerting_is_armed()
     check_schedule_beats_slo()
+    check_cadence_beats_budget()
     check_fill_history()
     if args.run_cheap:
         print("\n=== pipeline smoke: live run ===", flush=True)

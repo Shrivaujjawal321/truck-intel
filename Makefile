@@ -214,16 +214,28 @@ pipeline-smoke:
 NET_UNITS := aaa-prices freshness osm-truck-repair mechanics-daily mechanics \
              pois weekly-digest businesses ops-watch
 
+# Every timer-driven job goes in the deprioritised slice. tick is excluded
+# (seconds, every minute) and so are api/worker, which are interactive.
+BATCH_UNITS := aaa-prices freshness quality nightly-checks track-prune \
+               osm-truck-repair mechanics-daily mechanics pois businesses \
+               weekly-digest fuel-verify ops-watch
+
 # Install/refresh the systemd user units from deploy/ and enable the timers.
 install-timers:
 	install -Dm644 deploy/truckintel-*.service deploy/truckintel-*.timer \
-	  -t $(HOME)/.config/systemd/user/
+	  deploy/truckintel-batch.slice -t $(HOME)/.config/systemd/user/
 	@# See deploy/dropins/10-wait-dns.conf: the After=network-online.target in
 	@# every unit is a no-op in the user manager, so Persistent=true catch-up
 	@# runs fire before DNS is up. This is the gate that actually holds.
+	@for u in $(BATCH_UNITS); do \
+	  install -Dm644 deploy/dropins/10-wait-db.conf \
+	    $(HOME)/.config/systemd/user/truckintel-$$u.service.d/10-wait-db.conf; \
+	  install -Dm644 deploy/dropins/20-batch-slice.conf \
+	    $(HOME)/.config/systemd/user/truckintel-$$u.service.d/20-batch-slice.conf; \
+	done
 	@for u in $(NET_UNITS); do \
-	  install -Dm644 deploy/dropins/10-wait-dns.conf \
-	    $(HOME)/.config/systemd/user/truckintel-$$u.service.d/10-wait-dns.conf; \
+	  install -Dm644 deploy/dropins/11-wait-dns.conf \
+	    $(HOME)/.config/systemd/user/truckintel-$$u.service.d/11-wait-dns.conf; \
 	done
 	systemctl --user daemon-reload
 	systemctl --user enable --now \

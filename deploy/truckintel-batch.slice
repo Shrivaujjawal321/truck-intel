@@ -1,0 +1,31 @@
+# Scheduled batch jobs run here so they lose CPU to interactive work instead of
+# competing with it on equal terms.
+#
+# The daily jobs are scheduled 03:10-06:15, and this laptop is not on then --
+# ten consecutive boots put the earliest at 06:09 and the median around 09:30.
+# Every one of those runs therefore arrives as Persistent=true catch-up, and
+# catch-up ignores RandomizedDelaySec: on 2026-08-04 eight units started inside
+# a 41 ms window (09:19:48.154 -> .195), one of them osm-truck-repair, which
+# averages 33 minutes. That lands as a half-hour of contention on a 4-core
+# machine at exactly the moment Boss logs in and starts working.
+#
+# Moving the schedules into waking hours would trade a login spike for a
+# midday one. Capping the batch's share is the fix that does not move the
+# problem around: the work still runs, it just yields.
+#
+# CPUWeight only -- 100 is the default every other unit gets, so 20 means the
+# batch takes roughly a fifth of a contended core-share and effectively all of
+# an idle one. IOWeight is deliberately absent: this user manager has only
+# `cpu memory pids` delegated (cgroup.controllers), no `io`, so an IOWeight=
+# here would parse fine, do nothing, and read as protection that is not there.
+# MemoryHigh is throttle-not-kill, set at 4G of 15G total: enough headroom for
+# the PBF and conflation jobs, low enough that a runaway reclaims instead of
+# pushing the desktop into swap.
+
+[Unit]
+Description=truck-intel scheduled batch jobs (deprioritised against interactive work)
+Before=slices.target
+
+[Slice]
+CPUWeight=20
+MemoryHigh=4G

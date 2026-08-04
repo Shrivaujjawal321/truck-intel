@@ -180,8 +180,17 @@ CREATE INDEX IF NOT EXISTS staging_fsq_rec_ix
 -- by design: sync_sources never disables them, the engine worker never claims
 -- their jobs — engine._DERIVED_RUNNERS dispatches them to their scripts.
 -- schedule_minutes NULL = event-driven (enqueued manually / by a weekly
--- timer later, never by the tick). slo_hours 400 (~16.7 days) is a generous
--- freshness SLO for weekly/monthly rebuild cadences.
+-- timer later, never by the tick).
+--
+-- slo_hours must be >= the cadence that actually fires the source, or the
+-- budget is unmeetable by construction and the "violation" it reports is the
+-- calendar, not the data. 400 (~16.7d) was written when these were weekly-ish;
+-- osm_pois moved to a monthly timer on 2026-07-28 and businesses is
+-- OnCalendar=*-*-01, so both spent about half of every month reporting stale
+-- while working perfectly. 1080 (45d) = a month plus slack for a cycle that
+-- ran late off Persistent=true catch-up; a genuinely missed month lands near
+-- 60d and still trips. route_rebuild stays at 400: it is enqueued by the daily
+-- nightly-checks run, not monthly.
 -- ============================================================
 INSERT INTO ops.sources
     (source_id, name, owner, kind, load_pattern, schedule_minutes, slo_hours,
@@ -201,7 +210,7 @@ VALUES
     ('osm_pois',
      'Derived: OSM POI mirrors (fuel/rest/weigh) from Geofabrik US PBF -> osm.*',
      'truck-intel wave-2 OSM track',
-     'derived', 'derived', NULL, 400, TRUE, 'verified'),
+     'derived', 'derived', NULL, 1080, TRUE, 'verified'),
     ('osm_ways',
      'Derived: osmium-filtered highways from Geofabrik US PBF -> osm.ways (§3.1-5)',
      'truck-intel wave-2 OSM track',
@@ -209,7 +218,17 @@ VALUES
     ('businesses_conflate',
      'Derived: Overture + FSQ conflation -> core.businesses rebuild (§3.1-6)',
      'truck-intel wave-2 businesses track',
-     'derived', 'derived', NULL, 400, TRUE, 'verified')
+     'derived', 'derived', NULL, 1080, TRUE, 'verified')
 ON CONFLICT (source_id) DO NOTHING;
+
+-- The INSERT above is DO NOTHING, so it cannot correct a row that already
+-- exists — every database seeded before 2026-08-04 still carries the old 400h
+-- budget on sources that now fire monthly. Correct them explicitly. Idempotent
+-- and narrowed to the exact ids and the exact stale value, so a deliberate
+-- hand-tuned budget is never stomped.
+UPDATE ops.sources SET slo_hours = 1080
+ WHERE source_id IN ('osm_pois', 'businesses_conflate',
+                     'overture_places', 'fsq_places')
+   AND slo_hours = 400;
 
 COMMIT;

@@ -124,7 +124,15 @@ from truckintel.loaders import (
 OVERTURE_SOURCE_ID = "overture_places"
 FSQ_SOURCE_ID = "fsq_places"
 CONFLATE_SOURCE_ID = "businesses_conflate"
-SLO_HOURS = 400
+# A freshness budget below the firing cadence can never be satisfied, so it
+# does not alert on staleness — it alerts on the calendar. These three run off
+# truckintel-businesses.timer, OnCalendar=*-*-01, i.e. once a month (~31d).
+# At the old 400h (16.7d) every one of them went "stale" around the 17th and
+# stayed there until the 1st, roughly half of every month, which is how a
+# freshness alert stops being read. 45 days is a month plus enough slack to
+# absorb a cycle that ran late off Persistent=true catch-up, while still
+# flagging a genuinely missed month (that lands near 60d).
+SLO_HOURS = 1080
 
 CONFIG_DIR = Path("data/config")
 CATEGORY_MAP_PATH = CONFIG_DIR / "category_map.yaml"
