@@ -1,0 +1,14 @@
+# Daily, late morning: nominal schedules for the data jobs are 03:15-06:30,
+# but the laptop is off then and Persistent=true catch-up lands them at login
+# (~08:40-10:00 observed). 10:45 is after the whole batch has settled, so the
+# pushed snapshot reflects today's data, not yesterday's.
+[Unit]
+Description=daily truck-intel snapshot push to GitHub
+
+[Timer]
+OnCalendar=*-*-* 10:45:00
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

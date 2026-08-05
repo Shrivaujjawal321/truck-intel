@@ -1,0 +1,24 @@
+# truck-intel daily GitHub heartbeat.
+#
+# The pipeline's output lives in a local PostGIS database; GitHub only moves
+# when someone pushes. This unit regenerates snapshots/ (EIA diesel CSV +
+# layer counts + source freshness), commits it when it changed, and pushes —
+# carrying along any local-only code commits from dev sessions. Instituted
+# 2026-08-05, the day main was found sitting 4 commits ahead of origin and
+# Boss asked why GitHub showed no daily updates.
+#
+# Licence gate lives in scripts/daily_snapshot.py: the repo is PUBLIC, so the
+# snapshot ships EIA (US public domain) prices only; AAA daily (personal-use
+# licence) appears as metadata, never as prices.
+#
+# Scheduled after the morning data batch (03:15-06:30 nominal, ~08:40-10:00
+# in catch-up after login) so the snapshot reflects today's pulls.
+[Unit]
+Description=truck-intel daily snapshot commit + push to GitHub
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+TimeoutStartSec=15m
+ExecStart=%h/Documents/truck-intel/scripts/git_daily_push.sh

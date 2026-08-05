@@ -81,14 +81,20 @@ fi
 dns_ok() { getent hosts one.one.one.one >/dev/null 2>&1; }
 db_ok()  { (exec 3<>"/dev/tcp/$db_host/$db_port") 2>/dev/null; }
 
-deadline=$((SECONDS + TIMEOUT))
+# Attempts, not a wall-clock deadline: bash SECONDS keeps counting through a
+# suspend, so a laptop that sleeps mid-wait comes back with the whole budget
+# already spent and gives up just as the network returns. 2026-08-05, in
+# production: truckintel-aaa-prices started 08:38, the machine suspended,
+# resumed ~09:12, and this script reported "still unavailable after 120s" at
+# 09:12:55 — mechanics-daily resolved DNS fine at 09:16. Counting attempts
+# survives the gap: an iteration that straddles a suspend still costs one.
+attempts=$(( (TIMEOUT + 4) / 5 ))
 missing=""
-while :; do
+for ((i = 0; i < attempts; i++)); do
     missing=""
     [ "$WANT_DNS" = 1 ] && ! dns_ok && missing="$missing dns"
     [ "$WANT_DB" = 1 ]  && ! db_ok  && missing="$missing db($db_host:$db_port)"
     [ -z "$missing" ] && exit 0
-    [ "$SECONDS" -ge "$deadline" ] && break
     sleep 5
 done
 

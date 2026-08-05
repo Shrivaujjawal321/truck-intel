@@ -212,13 +212,13 @@ pipeline-smoke:
 # (api/worker carry Restart=on-failure) and would only pay the latency.
 # ops-watch is here because truckintel.notify delivers over Telegram.
 NET_UNITS := aaa-prices freshness osm-truck-repair mechanics-daily mechanics \
-             pois weekly-digest businesses ops-watch
+             pois weekly-digest businesses ops-watch git-push
 
 # Every timer-driven job goes in the deprioritised slice. tick is excluded
 # (seconds, every minute) and so are api/worker, which are interactive.
 BATCH_UNITS := aaa-prices freshness quality nightly-checks track-prune \
                osm-truck-repair mechanics-daily mechanics pois businesses \
-               weekly-digest fuel-verify ops-watch
+               weekly-digest fuel-verify ops-watch git-push
 
 # Install/refresh the systemd user units from deploy/ and enable the timers.
 install-timers:
@@ -245,5 +245,5 @@ install-timers:
 	  truckintel-mechanics-daily.timer truckintel-businesses.timer \
 	  truckintel-track-prune.timer truckintel-weekly-digest.timer \
 	  truckintel-ops-watch.timer truckintel-nightly-checks.timer \
-	  truckintel-fuel-verify.timer
+	  truckintel-fuel-verify.timer truckintel-git-push.timer
 	systemctl --user list-timers 'truckintel-*'
