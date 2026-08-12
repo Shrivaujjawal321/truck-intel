@@ -7,7 +7,7 @@ PostGIS database — this file is the heartbeat.
 ## Fuel
 
 - EIA weekly diesel (public domain): 143 rows, last 12 weeks → [diesel_prices_eia.csv](diesel_prices_eia.csv)
-- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-11, 51 states
+- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-12, 51 states
 
 ## Layers
 
@@ -15,7 +15,7 @@ PostGIS database — this file is the heartbeat.
 |---|---|---:|
 | Truck routes (NTAD national network) | `core.truck_routes` | 454,830 |
 | Mechanic shops | `core.mechanic_shops` | 11,759 |
-| Truck-repair POIs (OSM) | `osm.truck_repair` | 767 |
+| Truck-repair POIs (OSM) | `osm.truck_repair` | 768 |
 | Fuel stations (OSM) | `osm.fuel_stations` | 108,056 |
 | Businesses (conflated) | `core.businesses` | 2,981 |
 
@@ -24,26 +24,26 @@ PostGIS database — this file is the heartbeat.
 | source | age |
 |---|---|
 | aaa_daily | 1h |
-| businesses_conflate | 466h |
+| businesses_conflate | 490h |
 | caltrans_cwwp2_cc_d02 | 0h |
 | caltrans_cwwp2_cc_d03 | 0h |
 | caltrans_cwwp2_cc_d09 | 0h |
 | eia_diesel | 1h |
-| nbi_annual | 139h |
-| ntad_national_network | 96h |
+| nbi_annual | 163h |
+| ntad_national_network | 120h |
 | ntad_parking | 23h |
-| nti_tunnels | 138h |
+| nti_tunnels | 162h |
 | nws_alerts | 0h |
-| osm_pois | 464h |
+| osm_pois | 488h |
 | osm_truck_repair_overpass | 1h |
-| osm_ways | 358h |
-| overture_places | 467h |
+| osm_ways | 382h |
+| overture_places | 491h |
 | quality_nightly | 1h |
-| quality_rescore | 347h |
-| route_rebuild | 352h |
-| _test_green | 479h |
-| _test_red | 549h |
+| quality_rescore | 371h |
+| route_rebuild | 376h |
+| _test_green | 503h |
+| _test_red | 573h |
 | wzdx_az | 0h |
 | wzdx_ks | 0h |
-| wzdx_mn | 17h |
+| wzdx_mn | 0h |
 | wzdx_wa | 0h |
