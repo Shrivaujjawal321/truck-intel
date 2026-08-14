@@ -7,7 +7,7 @@ PostGIS database — this file is the heartbeat.
 ## Fuel
 
 - EIA weekly diesel (public domain): 143 rows, last 12 weeks → [diesel_prices_eia.csv](diesel_prices_eia.csv)
-- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-13, 51 states
+- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-14, 51 states
 
 ## Layers
 
@@ -15,7 +15,7 @@ PostGIS database — this file is the heartbeat.
 |---|---|---:|
 | Truck routes (NTAD national network) | `core.truck_routes` | 454,830 |
 | Mechanic shops | `core.mechanic_shops` | 11,759 |
-| Truck-repair POIs (OSM) | `osm.truck_repair` | 768 |
+| Truck-repair POIs (OSM) | `osm.truck_repair` | 769 |
 | Fuel stations (OSM) | `osm.fuel_stations` | 108,056 |
 | Businesses (conflated) | `core.businesses` | 2,981 |
 
@@ -23,27 +23,27 @@ PostGIS database — this file is the heartbeat.
 
 | source | age |
 |---|---|
-| aaa_daily | 4h |
-| businesses_conflate | 514h |
-| caltrans_cwwp2_cc_d02 | 0h |
-| caltrans_cwwp2_cc_d03 | 0h |
-| caltrans_cwwp2_cc_d09 | 0h |
-| eia_diesel | 1h |
-| nbi_annual | 19h |
-| ntad_national_network | 144h |
+| aaa_daily | 1h |
+| businesses_conflate | 538h |
+| caltrans_cwwp2_cc_d02 | 1h |
+| caltrans_cwwp2_cc_d03 | 1h |
+| caltrans_cwwp2_cc_d09 | 1h |
+| eia_diesel | 25h |
+| nbi_annual | 43h |
+| ntad_national_network | 168h |
 | ntad_parking | 23h |
-| nti_tunnels | 16h |
-| nws_alerts | 0h |
-| osm_pois | 512h |
-| osm_truck_repair_overpass | 5h |
-| osm_ways | 406h |
-| overture_places | 515h |
+| nti_tunnels | 40h |
+| nws_alerts | 1h |
+| osm_pois | 536h |
+| osm_truck_repair_overpass | 6h |
+| osm_ways | 430h |
+| overture_places | 539h |
 | quality_nightly | 7h |
-| quality_rescore | 395h |
-| route_rebuild | 400h |
-| _test_green | 527h |
-| _test_red | 597h |
+| quality_rescore | 419h |
+| route_rebuild | 424h |
+| _test_green | 551h |
+| _test_red | 621h |
 | wzdx_az | 0h |
-| wzdx_ks | 0h |
-| wzdx_mn | 1h |
-| wzdx_wa | 0h |
+| wzdx_ks | 1h |
+| wzdx_mn | 5h |
+| wzdx_wa | 1h |
