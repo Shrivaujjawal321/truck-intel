@@ -25,6 +25,20 @@ US_BBOXES: tuple[tuple[float, float, float, float], ...] = (
     # marine zones the alerts are issued for.
     (144.2, 12.9, 146.2, 20.8),     # Guam + CNMI
     (-171.2, -14.7, -168.0, -10.8), # American Samoa (southern hemisphere)
+    # Straits of Florida marine zones. Added 2026-08-17: the second real
+    # reject this gate has produced, and precisely the residual case the
+    # _judge_coords docstring predicted — an alert lying WHOLLY south of the
+    # CONUS box's 24.4 N edge. Measured: 3 of 197,132 cached NWS rows, one
+    # polygon spanning -80.63..-80.26 lon, 23.86..24.13 lat. NWS issues
+    # coastal-waters alerts for the waters south of the Keys; that is a US
+    # government product about US waters, so the box widens rather than the
+    # gate loosening.
+    #
+    # South edge at 23.5, not lower: Cuba's northernmost land is Punta
+    # Hicacos at ~23.20 N, so 23.5 holds the US marine zones while keeping
+    # Cuban territory OUT of the in-US verdict. West edge reaches the Dry
+    # Tortugas (~-82.9); east edge stops at -79.8, off Key Largo.
+    (-83.0, 23.5, -79.8, 24.4),     # Florida Keys / Straits marine zones
 )
 
 # Fields gate 1 additionally requires to parse as floats when required.

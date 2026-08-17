@@ -138,12 +138,21 @@ def test_wave2_schema_objects_and_seeds_exist():
             "WHERE schemaname = 'core' AND tablename = 'businesses'")}
         assert {"businesses_geom_gix", "businesses_tsv_gix",
                 "businesses_name_trgm", "businesses_cat_ix"} <= indexes
-        # derived-source seeds: event-driven (NULL schedule), generous 400 h SLO
-        for sid in ("osm_pois", "osm_ways", "businesses_conflate"):
+        # Derived-source seeds: event-driven, so NULL schedule_minutes. The SLO
+        # budget is NOT uniform, and must not be asserted as though it were:
+        # slo_hours has to be >= the cadence that actually fires the source or
+        # the budget is unmeetable by construction. osm_pois and businesses
+        # moved to monthly timers on 2026-07-28, so schema_wave2.sql widened
+        # them to 1080 h (45 d) on 2026-08-04; osm_ways stays at 400 h because
+        # it is event-driven off a PBF refresh, not monthly. See the comment
+        # above the seed INSERT in sql/schema_wave2.sql.
+        expected_slo = {"osm_pois": 1080, "osm_ways": 400,
+                        "businesses_conflate": 1080}
+        for sid, slo in expected_slo.items():
             seed = conn.execute(
                 "SELECT kind, load_pattern, schedule_minutes, slo_hours, enabled "
                 "FROM ops.sources WHERE source_id = %s", (sid,)).fetchone()
-            assert seed == ("derived", "derived", None, 400, True), sid
+            assert seed == ("derived", "derived", None, slo, True), sid
 
 
 @needs_db

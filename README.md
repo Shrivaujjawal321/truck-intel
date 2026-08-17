@@ -48,6 +48,45 @@ It exits non-zero on the first drift, so `make verify-claims` is the answer to
 - All HTTP goes through one `polite_get()` choke point: per-host rate limit,
   descriptive User-Agent with contact email, honor `Retry-After`, back off on
   403/429 and never retry around them.
+- A place is reported **closed only when a source said so**. Never inferred
+  from age — see the next section.
+
+## Is the place still there? (liveness, Gate 6)
+
+`confidence` scores the **record**. `liveness` scores the **subject**. They are
+different questions, and conflating them is how a well-sourced row about a
+repair shop that shut in 2021 gets rendered as current fact.
+
+    liveness = 50% decay-since-last-confirmed + 30% how many sources still
+               assert it + 20% authoritative current confirmation, minus
+               penalties — see truckintel/liveness.py for the full formula.
+
+`live_state` is five values, not two:
+
+| state | meaning |
+|---|---|
+| `open` | ≥ 75 — something authoritative confirms it now |
+| `likely_open` | ≥ 50 |
+| `unknown` | ≥ 25 — old data, nothing current. **Say so, do not guess.** |
+| `likely_closed` | < 25 |
+| `closed` | a source **positively asserted** closure |
+
+**What the API does with it.** `/v1/places` and `/v1/parking` hide `closed`
+rows by default (`include_closed=true` brings them back) and return everything
+else with its badge. Rows scored `unknown` or `likely_closed` are **not**
+hidden: those are scores, not closure assertions, and dropping them would
+publish absence of evidence as evidence of absence. The same single rule
+filters the `parking_sites` and `mechanic_shops` map layers, and
+`/v1/viewer/inventory` reports `rows` vs `rows_total` with the predicate that
+explains the difference. An opt-in `min_liveness=` threshold exists and states
+in `filter_notes` that it also drops honest unknowns.
+
+Most of the parking layer scores `unknown` — the capacity survey is 2019
+vintage and nothing re-confirms a public rest area. That is the honest number,
+not a bug.
+
+Refresh: `make liveness` (nightly timer), or `make liveness-report` to see what
+would change without writing.
 
 ## Run
 

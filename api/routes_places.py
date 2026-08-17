@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from api import common
+from api import common, liveness_filter
 
 router = APIRouter()
 
@@ -64,12 +64,13 @@ _DEF_NOTE = (
     "git, data/config/def_brands.yaml) — not an observed fact"
 )
 
-_SELECT = """
+_SELECT = f"""
 SELECT b.business_id, b.name, b.category, b.brand, b.address, b.city,
        b.state, b.zip, b.address_norm, b.phone, b.website, b.present_in,
        b.def, b.confidence, b.conf_trust, b.conf_fresh, b.conf_complete,
        b.conf_agree, b.flags, b.source_id, b.run_id, b.ingested_at,
-       b.observed_at, ST_AsGeoJSON(b.geom) AS gj
+       b.observed_at, ST_AsGeoJSON(b.geom) AS gj,
+       {liveness_filter.select_cols('b')}
 """
 
 
@@ -100,6 +101,11 @@ def _feature(r: dict, *, include_props: dict | None = None) -> dict:
         "ingested_at": r["ingested_at"],
         "observed_at": common.unknown(r["observed_at"]),  # source vintage
         "attribution": ATTRIBUTIONS,
+        # Gate 6. Separate from `confidence` on purpose: confidence scores the
+        # RECORD, liveness scores the SUBJECT. A well-sourced, well-formed row
+        # about a cafe that shut in 2021 is a high-confidence row about a place
+        # that is not there.
+        **liveness_filter.props(r),
     }
     # §6: def is rendered ONLY when inferred, and always with its marker.
     # Absent = unknown (never "no") — the column CHECK admits nothing else.
@@ -122,6 +128,12 @@ def list_places(
     min_confidence: int | None = Query(
         default=None, ge=0, le=100,
         description="drop rows scored below this (excludes unscored rows)"),
+    include_closed: bool = Query(
+        default=False,
+        description="include places a source asserted CLOSED (default: hidden)"),
+    min_liveness: int | None = Query(
+        default=None, ge=0, le=100,
+        description="drop rows scored below this (also drops unscored rows)"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> dict:
@@ -130,6 +142,14 @@ def list_places(
     params: list = [*box]
     filter_notes: list[str] = []
     order = "b.business_id"
+
+    # Gate 6 first, so the closed-row exclusion is stated in filter_notes even
+    # when the caller passes no other filter at all.
+    live_where, live_params, live_notes = liveness_filter.where(
+        "b", include_closed=include_closed, min_liveness=min_liveness)
+    where.extend(live_where)
+    params.extend(live_params)
+    filter_notes.extend(live_notes)
 
     if category is not None:
         if category not in CATEGORY_SLUGS:
@@ -170,7 +190,7 @@ def list_places(
     )
     return common.feature_collection(
         [_feature(r) for r in rows],
-        note=_NOTE,
+        note=f"{_NOTE} {liveness_filter.note()}",
         filter_notes=filter_notes,
         attribution=ATTRIBUTIONS,
         limit=limit,

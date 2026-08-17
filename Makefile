@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers
+.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking schema-liveness chain-sites liveness liveness-report route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers
 
 db-up:
 	./scripts/db_up.sh
@@ -103,6 +103,24 @@ pois-check:
 # Monthly truck-mechanic refresh (Overture pull + route assign + verify + HTML).
 mechanics:
 	uv run python scripts/mechanic_list.py
+
+# Gate 6 — liveness. schema-liveness is additive and idempotent; requires
+# schema.sql + schema_phase2.sql + schema_wave2.sql applied first.
+schema-liveness:
+	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_liveness.sql
+
+# The chains' own store locators (All The Places, CC0) -> core.chain_sites.
+# This is the corroboration source that lets Gate 6 vouch for an old row.
+chain-sites:
+	uv run python scripts/chain_sites.py
+
+# Refresh the presence ledger and rescore live_state on all three place
+# tables. Safe to run repeatedly; --dry-run reports without writing.
+liveness:
+	uv run python scripts/liveness_nightly.py
+
+liveness-report:
+	uv run python scripts/liveness_nightly.py --dry-run
 
 # Tracking devices. The token prints ONCE — only its sha256 is stored.
 #   make track-add DEVICE=truck-14 LABEL="Volvo VNL 760"
@@ -212,13 +230,13 @@ pipeline-smoke:
 # (api/worker carry Restart=on-failure) and would only pay the latency.
 # ops-watch is here because truckintel.notify delivers over Telegram.
 NET_UNITS := aaa-prices freshness osm-truck-repair mechanics-daily mechanics \
-             pois weekly-digest businesses ops-watch git-push
+             pois weekly-digest businesses ops-watch git-push liveness
 
 # Every timer-driven job goes in the deprioritised slice. tick is excluded
 # (seconds, every minute) and so are api/worker, which are interactive.
 BATCH_UNITS := aaa-prices freshness quality nightly-checks track-prune \
                osm-truck-repair mechanics-daily mechanics pois businesses \
-               weekly-digest fuel-verify ops-watch git-push
+               weekly-digest fuel-verify ops-watch git-push liveness
 
 # Install/refresh the systemd user units from deploy/ and enable the timers.
 install-timers:

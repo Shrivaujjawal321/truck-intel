@@ -1,0 +1,27 @@
+# truck-intel Gate 6 — chain locators, then the liveness rescore.
+#
+# Instituted 2026-08-17, the day the vintage audit showed core.parking_sites
+# carrying 2019 Jason's-Law survey data and core.mechanic_shops carrying an
+# Overture roster whose every row read observed_at = 2026-07-22, with nothing
+# in either schema able to say "this place may not be there any more".
+#
+# Two ExecStarts, ordered, because the second depends on the first: the
+# rescore reads core.chain_sites for its corroboration component, and running
+# it against a stale chain table would score confirmable truck stops as
+# 'unknown'.
+#
+# The chain fetch is allowed to fail without failing the unit ('-' prefix):
+# All The Places is a donated public service and one bad morning must not stop
+# the rescore, which still has the presence ledger and the licence registries
+# to work from. chain_sites.py already refuses to delete rows for a spider
+# that did not return — a Love's outage is not 731 closures.
+[Unit]
+Description=truck-intel liveness (chain locators + Gate 6 rescore)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+TimeoutStartSec=30m
+ExecStart=-%h/.local/bin/uv run python scripts/chain_sites.py
+ExecStart=%h/.local/bin/uv run python scripts/liveness_nightly.py

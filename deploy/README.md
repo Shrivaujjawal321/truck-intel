@@ -20,7 +20,21 @@ on the host (PostGIS runs in Docker via `scripts/db_up.sh`).
 | `truckintel-ops-watch.service` + `.timer` | repeated failures, never-succeeded sources, stuck runs, disarmed alerting, queue backlog → Telegram/ntfy | hourly |
 | `truckintel-nightly-checks.service` + `.timer` | route-graph staleness + pipeline smoke + published-claim drift | daily 03:50 |
 | `truckintel-fuel-verify.service` + `.timer` | fuel verification against a non-OSM source, then enrichment | Sundays 06:00 |
+| `truckintel-liveness.service` + `.timer` | Gate 6: refresh the presence ledger + chain store locators, then rescore `liveness` / `live_state` on the three place tables | daily 05:20 |
 | `truckintel-api.service` | uvicorn `api.main:app` on 127.0.0.1:8000 | long-running |
+
+### Why liveness runs nightly when its inputs are monthly
+
+The sources move on their own clocks (Overture monthly, All The Places weekly,
+licence registries daily) but **decay is continuous**: a row's score falls
+every day nobody re-confirms it. A driver querying at 2 a.m. should get today's
+honest number, not the one computed on the day of the last pull. The job is a
+few SQL statements over indexed columns — running it nightly costs less than
+reasoning about when it needs to run.
+
+It fires at 05:20, after `mechanics-daily` (05:00) and `osm-truck-repair`
+(04:45) so the rescore sees the roster and licence flags those jobs refresh,
+and before `git-push` so the pushed snapshot carries the day's scores.
 
 ### Fuel freshness: what "daily" actually covers
 

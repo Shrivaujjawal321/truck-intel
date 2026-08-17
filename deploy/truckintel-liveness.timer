@@ -1,0 +1,17 @@
+# Daily at 05:20 — after mechanics-daily (05:00) and osm-truck-repair (04:45),
+# so the rescore sees the roster and the licence flags those jobs refresh,
+# and before git-push (10:45) so the pushed snapshot carries today's scores.
+#
+# Nominal 05:20 is a time this laptop is off; Persistent=true lands it as
+# catch-up at login like every other job here, which is fine — liveness decay
+# is continuous and the score is computed from now(), not from the fire time.
+[Unit]
+Description=daily truck-intel liveness rescore
+
+[Timer]
+OnCalendar=*-*-* 05:20:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

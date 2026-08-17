@@ -81,6 +81,13 @@ _ROWS = [
         "ingested_at": datetime(2026, 7, 22, tzinfo=timezone.utc),
         "observed_at": datetime(2026, 6, 17, tzinfo=timezone.utc),
         "gj": '{"type":"Point","coordinates":[-75.7,39.6]}',
+        # Gate 6: chain-corroborated, so 'open' — the state only a current
+        # authoritative confirmation can reach.
+        "liveness": 92, "live_state": "open", "live_presence": 88,
+        "live_sources": 80, "live_corrob": 100,
+        "live_reasons": ["chain_confirmed:loves"],
+        "last_seen_at": datetime(2026, 7, 20, tzinfo=timezone.utc),
+        "last_seen_src": "chain_sites",
     },
     {
         "business_id": "biz_00000000000000bb", "name": "Indie Fuel",
@@ -95,6 +102,11 @@ _ROWS = [
         "ingested_at": datetime(2026, 7, 22, tzinfo=timezone.utc),
         "observed_at": None,
         "gj": '{"type":"Point","coordinates":[-75.71,39.61]}',
+        # Gate 6: never scored. Unscored is NOT closed — it renders 'unknown'
+        # and stays on the map. See api/liveness_filter.py.
+        "liveness": None, "live_state": None, "live_presence": None,
+        "live_sources": None, "live_corrob": None, "live_reasons": [],
+        "last_seen_at": None, "last_seen_src": None,
     },
 ]
 

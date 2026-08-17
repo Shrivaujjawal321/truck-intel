@@ -34,6 +34,20 @@ CLUSTER_CELLS = 64
 # individual rows. Above it, every row in view is drawn.
 POINT_CLUSTER_ZOOM = 8
 
+# Gate 6 (truckintel.liveness) on the map: keep a place off the map only when a
+# source POSITIVELY asserted it closed. Deliberately NOT `liveness >= n`:
+#
+#   'closed'         a source said so         -> hide. This is an assertion.
+#   'likely_closed'  scored under 25          -> SHOW, badged. This is a score.
+#   'unknown'        old data, nothing current-> SHOW, badged.
+#   NULL             never scored             -> SHOW. Unscored is not closed,
+#                                               and IS DISTINCT FROM keeps it.
+#
+# Hiding low scores would turn "nobody has confirmed this since 2019" into
+# "this is gone", which is the inference liveness.py exists to refuse. The
+# driver at 2 a.m. is better served by a badged maybe than by an empty map.
+LIVE_FILTER = "live_state IS DISTINCT FROM 'closed'"
+
 
 @dataclass(frozen=True)
 class Layer:
@@ -147,13 +161,18 @@ LAYERS: dict[str, Layer] = {
     "parking_sites": Layer(
         table="core.parking_sites",
         id_col="site_id",
-        props=("name", "kind", "state", "truck_spaces"),
+        props=("name", "kind", "state", "truck_spaces", "live_state", "liveness"),
         kind="point",
         min_zoom=3,
         max_features=4000,
         cluster_below_zoom=POINT_CLUSTER_ZOOM,
         label="Truck parking",
         color="#06b6d4",
+        # Gate 6. Only a POSITIVE closure assertion is dropped — see the note
+        # on mechanic_shops below. Most of this layer scores 'unknown' (2019
+        # Jason's Law vintage, nothing current); 'unknown' stays on the map
+        # with its badge, because hiding it would be inferring closure.
+        row_filter=LIVE_FILTER,
     ),
     "rest_areas": Layer(
         table="osm.rest_areas",
@@ -222,6 +241,8 @@ LAYERS: dict[str, Layer] = {
             "verification_status",
             "confidence",
             "gmaps_url",
+            "live_state",
+            "liveness",
         ),
         kind="point",
         min_zoom=3,
@@ -237,7 +258,11 @@ LAYERS: dict[str, Layer] = {
         # Same 5 km truck-route buffer as the fuel layer and as corridor.py's
         # service_buffer_m: a shop a driver cannot reach from the network is not
         # a shop this map should promise. 9,809 of 11,759 qualify.
-        row_filter="on_route_5km",
+        #
+        # Gate 6 rides along on the same predicate: a shop a source positively
+        # says is CLOSED is not a shop this map should promise either. Boss,
+        # 2026-08-17: "mechanic ki shop close hui vo nhi dikhani chiye hame."
+        row_filter=f"on_route_5km AND {LIVE_FILTER}",
     ),
     "live_events": Layer(
         table="core.live_events",
