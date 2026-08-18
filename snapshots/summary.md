@@ -15,7 +15,7 @@ PostGIS database — this file is the heartbeat.
 |---|---|---:|
 | Truck routes (NTAD national network) | `core.truck_routes` | 454,830 |
 | Mechanic shops | `core.mechanic_shops` | 11,759 |
-| Truck-repair POIs (OSM) | `osm.truck_repair` | 769 |
+| Truck-repair POIs (OSM) | `osm.truck_repair` | 770 |
 | Fuel stations (OSM) | `osm.fuel_stations` | 108,056 |
 | Businesses (conflated) | `core.businesses` | 2,981 |
 
@@ -23,27 +23,31 @@ PostGIS database — this file is the heartbeat.
 
 | source | age |
 |---|---|
-| aaa_daily | 1h |
-| businesses_conflate | 610h |
+| aaa_daily | 32h |
+| businesses_conflate | 641h |
 | caltrans_cwwp2_cc_d02 | 0h |
 | caltrans_cwwp2_cc_d03 | 0h |
 | caltrans_cwwp2_cc_d09 | 0h |
-| eia_diesel | 1h |
-| nbi_annual | 115h |
-| ntad_national_network | 70h |
-| ntad_parking | 1h |
-| nti_tunnels | 112h |
+| chain_sites | 5h |
+| eia_diesel | 5h |
+| liveness | 5h |
+| nbi_annual | 146h |
+| ntad_national_network | 101h |
+| ntad_parking | 5h |
+| nti_tunnels | 143h |
 | nws_alerts | 0h |
-| osm_pois | 608h |
-| osm_truck_repair_overpass | 78h |
-| osm_ways | 502h |
-| overture_places | 611h |
-| quality_nightly | 79h |
-| quality_rescore | 491h |
-| route_rebuild | 496h |
-| _test_green | 623h |
-| _test_red | 693h |
+| osm_pois | 639h |
+| osm_truck_repair_overpass | 5h |
+| osm_ways | 27h |
+| overture_places | 642h |
+| pipeline_smoke | 0h |
+| quality_nightly | 0h |
+| quality_rescore | 522h |
+| route_rebuild | 527h |
+| _test_green | 654h |
+| _test_red | 724h |
+| verify_claims | 0h |
 | wzdx_az | 0h |
 | wzdx_ks | 0h |
-| wzdx_mn | 1h |
+| wzdx_mn | 0h |
 | wzdx_wa | 0h |

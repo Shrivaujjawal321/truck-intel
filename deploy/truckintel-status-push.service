@@ -1,0 +1,21 @@
+# Periodic "is the pipeline still working?" digest over Telegram.
+#
+# Distinct from ops-watch, which only speaks when something is wrong. Silence
+# and health read identically to a person; this is what separates them.
+#
+# Sends nothing unless armed (`make status-push-arm N=5`), so leaving this
+# enabled on a fresh install costs one no-op process every 2 h.
+[Unit]
+Description=truck-intel periodic status digest (Telegram)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+# The digest reports on the database, so it must wait for it like every other
+# DB-backed job — otherwise the first update after a boot would report
+# "DATABASE UNREACHABLE" about a database that was merely still starting.
+ExecStartPre=%h/Documents/truck-intel/scripts/wait_ready.sh --db --dns --timeout 180
+ExecStart=%h/.local/bin/uv run python scripts/status_push.py
+MemoryMax=512M

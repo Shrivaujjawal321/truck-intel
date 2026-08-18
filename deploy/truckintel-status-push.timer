@@ -1,0 +1,18 @@
+# Every 2 hours, measured from the END of the last run rather than a wall-clock
+# calendar: the request was "2 ghante ke gap se", which is a gap, not a slot.
+#
+# Persistent=false on purpose, and it is the whole point. Every other timer here
+# sets it true so a missed nightly job catches up at login. For a status digest
+# catch-up is the wrong behaviour: a laptop off for eight hours would deliver
+# four queued updates in one burst at login, which is noise, not news.
+[Unit]
+Description=truck-intel status digest timer (every 2h while armed)
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=2h
+AccuracySec=1m
+Persistent=false
+
+[Install]
+WantedBy=timers.target
