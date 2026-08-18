@@ -15,7 +15,18 @@ url: https://mn.carsprogram.org/carsapi_v1/api/wzdx
 kind: live_json
 load_pattern: event_lifecycle
 parser: wzdx
-schedule_minutes: 15
+# 60, not the 15 the other WZDx feeds use, since 2026-08-18. This feed hangs:
+# 84 of 175 runs in 7 days failed on "Read timed out (60s)", and after
+# polite_get gained a retry the failures that remained were runs where BOTH
+# attempts hung (133s and 142s wall time). It is not slow — asked by hand it
+# returns 1.5 MB in 3.5 s — it stalls, roughly every other attempt.
+#
+# The SLO is 24 h. Polling a visibly struggling state-DOT server 96 times a
+# day for data that may be a day old is over-polling on its own terms, and it
+# was the single largest source of failed runs in the whole pipeline. Hourly is
+# still 24x more often than the budget requires, and it is kinder to a server
+# that is plainly having a hard time. The CAVEAT above already predicted this.
+schedule_minutes: 60
 slo_hours: 24                  # work zones move slower than weather alerts
 license: MN state open data (USDOT WZDx Feed Registry, open/no-key)
 attribution: "Minnesota DOT (WZDx / CARS program)"
