@@ -814,7 +814,10 @@ def pull_fsq(*, release: str | None = None,
     run_id = _start_run(source_id)
     try:
         token = os.environ.get("HF_TOKEN") or os.environ.get("FSQ_HF_TOKEN")
-        if not mirror and not token:
+        # local_dir needs neither: the files are already on disk, put there by
+        # scripts/fsq_fetch.sh from the anonymous mirror. Without this clause a
+        # local run recorded 'skipped_no_key' and read nothing.
+        if not mirror and not local_dir and not token:
             message = (
                 "HF_TOKEN/FSQ_HF_TOKEN unset — FSQ OS Places is a gated FREE "
                 "download (huggingface.co/datasets/foursquare/fsq-os-places); "
@@ -903,7 +906,11 @@ def pull_fsq(*, release: str | None = None,
                       f"retrying with a fresh DuckDB connection", flush=True)
                 time.sleep(_PULL_RETRY_WAIT_S)
             con = _duck()
-            if not mirror:
+            # The HF secret is only for hf:// reads. Neither the source.coop
+            # mirror nor a local directory needs it, and with local_dir the
+            # token is None — this branch used to run anyway and died on
+            # None.replace().
+            if not mirror and not local_dir:
                 escaped = token.replace("'", "''")
                 con.execute(
                     "CREATE SECRET hf_secret "

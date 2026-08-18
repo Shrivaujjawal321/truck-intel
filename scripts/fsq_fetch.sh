@@ -51,21 +51,33 @@ fi
 REL=$(printf '%s' "$xml" | grep -o '<Key>fsq-os-places/[0-9-]*/places/' \
       | sed 's|<Key>fsq-os-places/||; s|/places/||' | sort -u | tail -1)
 if [ -z "$REL" ]; then echo "no release found in listing" >&2; exit 1; fi
-printf '%s' "$xml" | grep -o "<Key>fsq-os-places/$REL/places/[^<]*\.parquet</Key>" \
-    | sed 's|<Key>||; s|</Key>||' | sort > "$KEYS"
+# "key size" per line. The size comes from the listing we already have, NOT
+# from a per-file HEAD. A HEAD can answer with a transient error body and no
+# status check: on the first run 53.parquet was reported as 16 bytes, so a
+# complete 197,197,846-byte file was declared SHORT six times and then FAILED.
+# The listing is authoritative, it is one request instead of 81, and it cannot
+# disagree with itself.
+printf '%s' "$xml" | python3 -c '
+import sys, re
+xml = sys.stdin.read()
+rel = sys.argv[1]
+pat = r"<Key>(fsq-os-places/%s/places/[^<]*\.parquet)</Key>.*?<Size>(\d+)</Size>" % re.escape(rel)
+for key, size in re.findall(pat, xml, re.S):
+    print(key, size)
+' "$REL" | sort > "$KEYS"
 n=$(wc -l < "$KEYS")
 [ "$n" -gt 0 ] || { echo "no parquet keys for release $REL" >&2; exit 1; }
 echo "release $REL — $n parquet parts -> $DIR"
 
 fetch_one() {
-    local key="$1" file remote local_size attempt
+    local line="$1" key remote file local_size attempt
+    key="${line%% *}"
+    remote="${line##* }"
     file="$DIR/$(basename "$key")"
 
-    remote=$(curl -sSI -A "truck-intel (+ops mirror)" --connect-timeout 20 "$BASE/$key" \
-             | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
-    if [ -z "$remote" ]; then
-        echo "$(date +%T) SIZE-UNKNOWN $(basename "$key")" >> "$LOG"; return 1
-    fi
+    case "$remote" in
+        ''|*[!0-9]*) echo "$(date +%T) SIZE-UNKNOWN $(basename "$key")" >> "$LOG"; return 1 ;;
+    esac
     if [ "$FORCE" = "--force" ]; then rm -f "$file"; fi
     local_size=$(stat -c%s "$file" 2>/dev/null || echo 0)
     if [ "$local_size" = "$remote" ]; then
