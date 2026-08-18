@@ -782,9 +782,25 @@ def _parse_date(raw) -> date | None:
         return None
 
 
+def _release_from_local_mirror(d: Path) -> str:
+    """Release id for a local mirror, from the keys.txt scripts/fsq_fetch.sh
+    writes. observed_at falls back to the release date, so guessing here would
+    silently mislabel every row's freshness — fail instead."""
+    keys = d / "keys.txt"
+    if keys.is_file():
+        for line in keys.read_text().splitlines():
+            parts = line.strip().split("/")
+            if len(parts) > 1 and parts[1]:
+                return parts[1]
+    raise RuntimeError(
+        f"cannot determine the release for {d} — {keys} is missing or empty. "
+        "Re-run scripts/fsq_fetch.sh, or pass --release explicitly.")
+
+
 def pull_fsq(*, release: str | None = None,
              bbox: tuple[float, float, float, float] | None = None,
              max_rows: int | None = None, mirror: bool = False,
+             local_dir: str | None = None,
              count_probe: bool = True,
              staging_table: str = "staging.fsq_places",
              source_id: str = FSQ_SOURCE_ID) -> int:
@@ -809,7 +825,27 @@ def pull_fsq(*, release: str | None = None,
             print(f"{source_id} run {run_id}: {message}", flush=True)
             return 0
 
-        if mirror:
+        if local_dir:
+            # Local files, because reading them over HTTP does not work here.
+            # DuckDB's httpfs against data.source.coop stalls: measured twice on
+            # 2026-08-18, a run reached ~28-30 MB then sat at 0-6 KB/s with
+            # sockets in CLOSE-WAIT for 55 minutes, while plain curl pulled an
+            # 11 MB part from the same host at 3.6 MB/s on a fresh connection.
+            # scripts/mechanic_list.py reached the same conclusion against the
+            # Overture store. scripts/fsq_fetch.sh mirrors the release with
+            # verified, resumable curl; this reads what it wrote.
+            d = Path(local_dir)
+            files = sorted(str(f) for f in d.glob("*.parquet"))
+            if not files:
+                raise RuntimeError(
+                    f"--fsq-local-dir {local_dir!r} holds no .parquet files — "
+                    "run scripts/fsq_fetch.sh first")
+            rel = release or _release_from_local_mirror(d)
+            file_list = ", ".join("'" + f.replace("'", "''") + "'" for f in files)
+            src = f"read_parquet([{file_list}])"
+            basis = (f"local mirror {local_dir} ({len(files)} parquet files, "
+                     f"release {rel})")
+        elif mirror:
             rel = release or discover_fsq_mirror_release()
             # DuckDB can't glob generic HTTP paths — hand it an explicit,
             # listing-derived file list (see fsq_mirror_parquet_urls).
@@ -1403,6 +1439,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fsq-mirror", action="store_true",
                         help="use the anonymous source.coop mirror "
                              "(frozen releases) instead of gated HF")
+    parser.add_argument("--fsq-local-dir", default=None, metavar="DIR",
+                        help="read the release from a local mirror written by "
+                             "scripts/fsq_fetch.sh (e.g. data/fsq_places) "
+                             "instead of over HTTP")
     parser.add_argument("--no-count", action="store_true",
                         help="skip the unmapped/closed COUNT probe")
     args = parser.parse_args(argv)
@@ -1415,6 +1455,7 @@ def main(argv: list[str] | None = None) -> int:
                           count_unmapped=not args.no_count)
         elif args.pull_fsq:
             pull_fsq(release=args.release, bbox=args.bbox,
+                     local_dir=args.fsq_local_dir,
                      max_rows=args.max_rows, mirror=args.fsq_mirror,
                      count_probe=not args.no_count)
         else:

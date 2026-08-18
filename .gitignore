@@ -52,3 +52,7 @@ data/reviews/
 # runtime counter for scripts/status_push.py — changes every 2h, means nothing
 # to anyone else
 data/status_push_state.json
+
+# FSQ OS Places local mirror (16.8 GB — replayable from source.coop,
+# never committed). scripts/fsq_fetch.sh writes it; --fsq-local-dir reads it.
+data/fsq_places/
