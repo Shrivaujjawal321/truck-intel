@@ -79,7 +79,30 @@ fi
 # getent rather than ping or curl: it goes through NSS, which is the path
 # requests/urllib actually take, so this tests what the job will do.
 dns_ok() { getent hosts one.one.one.one >/dev/null 2>&1; }
-db_ok()  { (exec 3<>"/dev/tcp/$db_host/$db_port") 2>/dev/null; }
+
+# A real connection, for the same reason dns_ok uses getent: it tests what the
+# job will actually do. A TCP handshake is not readiness. Postgres accepts
+# connections on the socket while it is still replaying WAL and answers every
+# one of them with "FATAL: the database system is starting up" -- so the old
+# /dev/tcp probe reported ready and the job's own connect failed seconds later.
+# 2026-08-18, in production, on one boot: git-push, mechanics-daily and
+# track-prune all passed this gate at 12:20-12:26 and then died on
+# "server closed the connection unexpectedly" / "the database system is
+# starting up". Three units, one boot, one gap.
+#
+# Falls back to the TCP probe only if the venv is missing (a half-built
+# checkout), because a gate that cannot run is worse than a coarse one.
+db_ok() {
+    if [ -x .venv/bin/python ]; then
+        .venv/bin/python - <<'PYCHK' >/dev/null 2>&1
+import psycopg
+from truckintel.config import database_url
+psycopg.connect(database_url(), connect_timeout=3).close()
+PYCHK
+    else
+        (exec 3<>"/dev/tcp/$db_host/$db_port") 2>/dev/null
+    fi
+}
 
 # Attempts, not a wall-clock deadline: bash SECONDS keeps counting through a
 # suspend, so a laptop that sleeps mid-wait comes back with the whole budget

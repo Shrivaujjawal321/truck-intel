@@ -45,6 +45,13 @@ Subcommands:
 ORDER MATTERS: --verify reads the licence and OSM flags, because those are the
 only genuinely independent votes available. Running --verify before them
 understates every shop.
+
+Audit: exactly one ops.source_runs row per invocation (source_id
+'mechanic_list', seeded kind='derived' so freshness_check.py and the
+circuit breaker can see it). Exit 0 = success, 1 = failure (recorded on the
+run row, never silent — see the 2026-08-18 data-critic review, F-01). --pull
+additionally refuses to TRUNCATE core.mechanic_shops if any US state comes
+back with an implausibly low row count (see STATE_MIN_ROWS_FLOOR below).
 """
 from __future__ import annotations
 
@@ -80,6 +87,19 @@ load_dotenv()
 OUT_DIR = Path(os.environ.get("MECHANICS_OUT_DIR", "data/outputs/mechanics"))
 OVERTURE_BUCKET = "overturemaps-us-west-2"
 OVERTURE_REGION = "us-west-2"
+
+# ops.sources identity for this whole pipeline (2026-08-18 data-critic F-01:
+# this script wrote zero ops.source_runs rows and was invisible to
+# freshness_check.py, the circuit breaker and gates 1-3 — see
+# data/reviews/2026-08-18/05-data-critic.md). One source_id covers every
+# subcommand combination main() can run, mirroring chain_sites.py /
+# osm_extract.py's "exactly one ops.source_runs row per invocation" rule.
+SOURCE_ID = "mechanic_list"
+# The daily --refresh chain (licence + chains + OSM + verify + cbp + html) is
+# the cadence that actually keeps the deliverable live; the monthly --pull is
+# allowed to be the stale case some months. 48h gives one missed daily run
+# before paging, per the review's explicit recommendation.
+SLO_HOURS = 48
 TRUCK_CATS = (
     "truck_repair", "truck_repair_and_services_for_businesses",
     "trailer_repair", "emergency_roadside_service", "roadside_assistance",
@@ -487,6 +507,104 @@ def ensure_schema() -> None:
         pg.execute(MIGRATE)
 
 
+# ------------------------------------------------------------ run bookkeeping
+#
+# Idempotent seed, same shape as chain_sites.py / osm_extract.py: a fresh DB
+# has no ops.sources row for this pipeline yet, and ops.source_runs has an FK
+# to ops.sources, so the seed must run before the first INSERT ever can.
+_SEED_SQL = """
+INSERT INTO ops.sources
+    (source_id, name, owner, kind, load_pattern, schedule_minutes, slo_hours,
+     enabled, verify_status)
+VALUES
+    (%(sid)s,
+     'Derived: route-based truck mechanic list (Overture Places + NY/NJ '
+     'licence registries + All The Places + OSM) -> core.mechanic_shops',
+     'truck-intel mechanics track', 'derived', 'derived', NULL, %(slo)s,
+     TRUE, 'verified')
+ON CONFLICT (source_id) DO NOTHING
+"""
+
+
+def _start_run() -> int:
+    with get_conn() as conn:
+        conn.execute(_SEED_SQL, {"sid": SOURCE_ID, "slo": SLO_HOURS})
+        return conn.execute(
+            "INSERT INTO ops.source_runs (source_id, status) "
+            "VALUES (%s, 'running') RETURNING run_id", (SOURCE_ID,)
+        ).fetchone()[0]
+
+
+def _finish_run(run_id: int, status: str, *, message: str | None = None,
+                rows_published: int | None = None) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ops.source_runs SET status = %s, finished_at = now(), "
+            "message = %s, rows_published = %s WHERE run_id = %s",
+            (status, (message or "")[:1000] or None, rows_published, run_id))
+
+
+# Every state Overture's US places extract should be able to see (+DC).
+# Territories excluded on purpose: pull()'s own query only keeps
+# addresses[1].country IN ('US', NULL), so PR/VI/GU rows are rare and not a
+# fair comparison against a 50-states-+-DC baseline. Same set osm_extract.py
+# and osm_overpass.py already carry for the identical reason.
+_US_STATES = frozenset(
+    "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN "
+    "MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA "
+    "WV WI WY".split()
+)
+
+# A structural backstop, not a market estimate — unlike chain_sites.py's
+# MIN_ROWS dict (set from a real dated production run, 2026-08-17), there is
+# no observed per-state baseline for this pull yet: building one honestly
+# means running the 3h monthly scan, which is out of scope for this fix. 3 is
+# deliberately tiny: even DC and the thinnest states (WY, VT, ND) sit on
+# interstate corridors and have always returned more than a handful of
+# truck-specific Overture rows. A state at 0-2 means the scan silently missed
+# that state's slice of the parquet store (partial S3 mirror, a country/region
+# filter bug) — a national category scan going to true zero in an entire
+# state is not a plausible real-world outcome, so this never fires on genuine
+# scarcity. TODO once a real post-fix --pull lands: replace with a per-state
+# MIN_ROWS dict the same way chain_sites.py did, from the observed counts.
+STATE_MIN_ROWS_FLOOR = 3
+
+# Self-calibrating guard against the state's OWN last successful pull —
+# chosen because it needs no fabricated ground truth: "roughly half of what
+# this exact state had last time" is the same ratio chain_sites.py's MIN_ROWS
+# dict comment uses ("roughly half of the 2026-08-17 observed counts"),
+# applied relatively instead of as a hardcoded number we have no grounding
+# for. Skipped below a 10-row baseline — too little signal to tell a real
+# swing from noise in a small state.
+STATE_MIN_BASELINE_ROWS = 10
+STATE_MAX_DROP_RATIO = 0.5
+
+
+def _state_floor_violations(rows: list[tuple], prev_counts: dict[str, int]) -> list[str]:
+    """States this pull looks broken for, not merely thin. `rows` are the raw
+    Overture tuples from pull()'s cursor (state is column index 8);
+    `prev_counts` is {state: shop count} from core.mechanic_shops BEFORE the
+    TRUNCATE this run is about to issue. Pure function so the rule can be
+    tested without a database, same reasoning as independence() above."""
+    counts: dict[str, int] = {}
+    for r in rows:
+        state = (r[8] or "")[:2].upper()
+        if state in _US_STATES:
+            counts[state] = counts.get(state, 0) + 1
+    problems = []
+    for state in sorted(_US_STATES):
+        n = counts.get(state, 0)
+        if n < STATE_MIN_ROWS_FLOOR:
+            problems.append(f"{state}: {n} < absolute floor {STATE_MIN_ROWS_FLOOR}")
+            continue
+        prev = prev_counts.get(state, 0)
+        if prev >= STATE_MIN_BASELINE_ROWS and n < prev * STATE_MAX_DROP_RATIO:
+            problems.append(
+                f"{state}: {n} is a {100 * (1 - n / prev):.0f}% drop from "
+                f"last successful pull's {prev}")
+    return problems
+
+
 def _duck():
     import duckdb
     con = duckdb.connect()
@@ -569,6 +687,21 @@ def pull(release: str | None = None, local_dir: str | None = None) -> int:
     loaded = 0
     ensure_schema()
     with get_conn() as pg:
+        # Snapshot BEFORE the truncate — this is the only place the previous
+        # run's per-state counts still exist. Raising below (before the
+        # TRUNCATE executes) rolls the whole transaction back on exit, so a
+        # tripped guard leaves the live table exactly as it was: no manual
+        # rollback bookkeeping needed, same "gate aborts, old data stays live"
+        # outcome the registry gates give engine.py-driven pulls.
+        prev_counts = dict(pg.execute(
+            "SELECT state, count(*) FROM core.mechanic_shops "
+            "WHERE state IS NOT NULL GROUP BY state").fetchall())
+        problems = _state_floor_violations(rows, prev_counts)
+        if problems:
+            raise RuntimeError(
+                f"per-state min_rows guard tripped on {len(problems)} "
+                "state(s), refusing to publish (truncate aborted): "
+                + "; ".join(problems))
         pg.execute("TRUNCATE core.mechanic_shops")
         with pg.cursor() as cur2:
             for r in rows:
@@ -1851,32 +1984,56 @@ def main():
     # rewrite identical rows AND reset observed_at, making stale data look
     # fresh. Everything else here changes daily and is cheap.
     cheap = a.refresh or do_all
+    # One audited ops.source_runs row per invocation, whichever subcommand mix
+    # was asked for — mirrors chain_sites.py / osm_extract.py. A skip from
+    # _Busy above never reaches here on purpose (see _acquire_lock's
+    # docstring: a skipped run is correct behaviour, not a failure to audit).
+    run_id = _start_run()
     try:
-        if a.pull or do_all:
-            pull(a.release, a.local_dir)
-        if a.pull or a.enrich or do_all:
-            enrich_routes()
-        # Order is load-bearing: the independence count in verify() reads the
-        # licence and OSM flags, so both must be stamped before it runs.
-        if a.licence or cheap:
-            fetch_licences()
-            licence_join()
-        if a.chains or cheap:
-            chains_hours()
-        if a.osm_match or cheap:
-            osm_match()
-        if a.verify or cheap:
-            verify()
-        if a.cbp or cheap:
-            coverage()
-        if a.fill_report or cheap:
-            fill_report()
-        if a.csv or cheap:
-            render_csv()
-        if a.html or cheap:
-            render_html()
-    finally:
-        lock.close()      # releases the advisory lock
+        try:
+            if a.pull or do_all:
+                pull(a.release, a.local_dir)
+            if a.pull or a.enrich or do_all:
+                enrich_routes()
+            # Order is load-bearing: the independence count in verify() reads
+            # the licence and OSM flags, so both must be stamped before it runs.
+            if a.licence or cheap:
+                fetch_licences()
+                licence_join()
+            if a.chains or cheap:
+                chains_hours()
+            if a.osm_match or cheap:
+                osm_match()
+            if a.verify or cheap:
+                verify()
+            if a.cbp or cheap:
+                coverage()
+            if a.fill_report or cheap:
+                fill_report()
+            if a.csv or cheap:
+                render_csv()
+            if a.html or cheap:
+                render_html()
+        finally:
+            lock.close()      # releases the advisory lock
+    except BaseException as exc:
+        # The audit must not lie by omission: a run that blew up gets a
+        # 'failed' row, never silence (2026-08-18 data-critic F-01 — this
+        # pipeline had NO run row at all before this fix, so a silent 0-row
+        # publish or a bare exception was invisible to freshness_check.py).
+        _finish_run(run_id, "failed", message=f"{type(exc).__name__}: {exc}")
+        print(f"[mechanic-list] FAILED: {type(exc).__name__}: {exc}",
+              file=sys.stderr, flush=True)
+        return 1
+    with get_conn() as pg:
+        total = pg.execute(
+            "SELECT count(*) FROM core.mechanic_shops").fetchone()[0]
+    flags = [k.replace("_", "-") for k, v in vars(a).items()
+             if isinstance(v, bool) and v]
+    _finish_run(run_id, "success",
+                message=f"flags={','.join(flags) or 'default(all)'}; "
+                        f"core.mechanic_shops={total}",
+                rows_published=total)
     return 0
 
 

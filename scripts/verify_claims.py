@@ -32,6 +32,42 @@ from truckintel.db import get_conn  # noqa: E402
 
 M_PER_MILE = 1609.344
 
+# Audited under its own source id so ops_watch — which only reads
+# ops.source_runs — can actually see a failed verification instead of it
+# living in a journal nobody reads. Same seed-then-run-row pattern as
+# scripts/osm_extract.py / scripts/chain_sites.py.
+SOURCE_ID = "verify_claims"
+SLO_HOURS = 48   # daily nightly-checks cadence + a day of headroom
+
+_SEED_SQL = """
+INSERT INTO ops.sources
+    (source_id, name, owner, kind, load_pattern, schedule_minutes, slo_hours,
+     enabled, verify_status)
+VALUES
+    (%(sid)s,
+     'Derived: nightly re-derivation of every published README/viewer figure',
+     'truck-intel ops track', 'derived', 'derived', NULL, %(slo)s,
+     TRUE, 'verified')
+ON CONFLICT (source_id) DO NOTHING
+"""
+
+
+def _start_run() -> int:
+    with get_conn() as conn:
+        conn.execute(_SEED_SQL, {"sid": SOURCE_ID, "slo": SLO_HOURS})
+        return conn.execute(
+            "INSERT INTO ops.source_runs (source_id, status) "
+            "VALUES (%s, 'running') RETURNING run_id", (SOURCE_ID,)
+        ).fetchone()[0]
+
+
+def _finish_run(run_id: int, status: str, *, message: str | None = None) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ops.source_runs SET status = %s, finished_at = now(), "
+            "message = %s WHERE run_id = %s",
+            (status, (message or "")[:1000] or None, run_id))
+
 
 class Checker:
     def __init__(self, verbose: bool = False) -> None:
@@ -94,6 +130,7 @@ def main() -> int:
     ap.add_argument("--verbose", "-v", action="store_true")
     args = ap.parse_args()
     c = Checker(args.verbose)
+    run_id = _start_run()
 
     with get_conn() as conn:
         # --- dataset row counts, as published in the viewer sidebar ----------
@@ -359,10 +396,14 @@ def main() -> int:
     print(f"\n{'-' * 72}")
     print(f"{c.passed} claims verified · {len(c.failed)} failed · {len(c.skipped)} skipped")
     if c.failed:
+        _finish_run(run_id, "failed",
+                    message=f"{len(c.failed)} claim(s) failed: " + "; ".join(c.failed))
         print("\nFAILED:")
         for f in c.failed:
             print(f"  {f}")
         return 1
+    _finish_run(run_id, "success",
+                message=f"{c.passed} claims verified, {len(c.skipped)} skipped")
     print("every published figure matches the database.")
     return 0
 

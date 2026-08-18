@@ -74,10 +74,22 @@ INSERT INTO ops.sources
 VALUES
     (%(sid)s,
      'Derived: routable graph + limits + viewer geometry from core.truck_routes',
-     'truck-intel routing track', 'derived', 'derived', NULL, %(slo)s,
+     'truck-intel routing track', 'derived', 'derived', NULL, NULL,
      TRUE, 'verified')
 ON CONFLICT (source_id) DO UPDATE SET
-    kind = 'derived', load_pattern = 'derived', enabled = TRUE
+    kind = 'derived', load_pattern = 'derived', enabled = TRUE,
+    -- No freshness SLO, deliberately (2026-08-18). A rebuild only happens when
+    -- core.truck_routes changes, so "hours since the last success" measures the
+    -- upstream's release cadence, not this job's health: on 2026-08-18 freshness
+    -- reported route_rebuild 527 h stale against a 400 h SLO while `--check`
+    -- reported the graph CURRENT — correctly, it was rebuilt 4 days after the
+    -- last routes publish. An alarm that is permanently red until an unrelated
+    -- feed changes is how people learn to ignore alarms.
+    --
+    -- The real signal is staleness() — is the graph behind the routes table? —
+    -- which `--check` runs nightly and records as a FAILED run when it is
+    -- behind. ops_watch escalates that on the first occurrence.
+    slo_hours = NULL
 """
 
 
@@ -209,7 +221,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
                     help="report whether the graph is behind the routes table; "
-                         "exit 1 if it is. Writes nothing.")
+                         "exit 1 if it is. Writes nothing when current; when "
+                         "stale it records one failed ops.source_runs row so "
+                         "ops_watch escalates it.")
     ap.add_argument("--if-stale", action="store_true",
                     help="rebuild ONLY when the graph is behind (what the "
                          "scheduled job runs — a weekly rebuild of an "
@@ -220,6 +234,14 @@ def main() -> int:
     stale, why = staleness()
     print(f"[rebuild] {'STALE' if stale else 'current'}: {why}", flush=True)
     if args.check:
+        if stale:
+            # Only write on the FAIL path. A 'success' row here would read
+            # back through staleness()'s own `status = 'success'` filter on
+            # SOURCE_ID as if a real rebuild had just happened, masking the
+            # exact staleness this flag exists to report. A clean --check
+            # writes nothing, same as it always has.
+            run_id = _start_run()
+            _finish_run(run_id, "failed", message=f"--check: {why}")
         return 1 if stale else 0
     if args.if_stale and not stale:
         print("[rebuild] nothing to do", flush=True)

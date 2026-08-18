@@ -110,9 +110,23 @@ INSERT INTO ops.sources
 VALUES
     (%(sid)s,
      'National truck-chain store locators via All The Places (CC0)',
-     'All The Places / the chains themselves', 'bulk_http', 'snapshot_swap',
-     1440, 72, TRUE, 'verified', 'curated', 0.85, 0.85)
-ON CONFLICT (source_id) DO NOTHING
+     'All The Places / the chains themselves', 'derived', 'snapshot_swap',
+     NULL, 72, TRUE, 'verified', 'curated', 0.85, 0.85)
+ON CONFLICT (source_id) DO UPDATE SET
+    -- Self-healing, like route_rebuild.py's seed: DO NOTHING let the live row
+    -- drift and stay drifted. On 2026-08-18 this row was found kind='bulk_http',
+    -- schedule_minutes=1440, enabled=false — a combination with no correct
+    -- behaviour available. enabled=false silenced ops_watch's disarmed check
+    -- but freshness_check skips non-derived sources anyway, so the job had NO
+    -- staleness alerting at all; and enabling it while schedule_minutes was set
+    -- would have handed it to the queue worker, which would run it a second
+    -- time alongside truckintel-liveness.service.
+    --
+    -- kind='derived' is what it actually is: a script on a timer, not a
+    -- registry feed the engine fetches. schedule_minutes NULL keeps
+    -- truckintel/jobs.py:55 from ever enqueuing it. enabled=TRUE lets
+    -- freshness_check see it against its 72 h SLO.
+    kind = 'derived', schedule_minutes = NULL, enabled = TRUE
 """
 
 

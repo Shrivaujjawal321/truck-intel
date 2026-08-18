@@ -100,6 +100,7 @@ import math
 import os
 import re
 import sys
+import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -139,6 +140,18 @@ CATEGORY_MAP_PATH = CONFIG_DIR / "category_map.yaml"
 DEF_BRANDS_PATH = CONFIG_DIR / "def_brands.yaml"
 DUCKDB_TMP = Path("data/duckdb_tmp")
 DUCKDB_MEMORY_LIMIT = "4GB"  # binding hardware budget — PG shares the box
+
+# Both remote-parquet pulls stream for 15-20+ minutes across many HTTP/S3
+# requests; a transient blip anywhere in that window kills the whole DuckDB
+# result (see _duck() and the 2026-08-04 fsq_places incident notes below).
+# TRUNCATE-before-COPY makes a rerun idempotent, so retrying the whole
+# connect+select+copy step with a FRESH connection is safe and is the actual
+# fix, not just more httpfs-level retries. 2 attempts, not more: this is a
+# best-effort enrichment pull (see truckintel-businesses.service — the FSQ
+# ExecStart line has a leading '-'), it must not turn a genuine outage into
+# an hours-long retry storm inside the 6h service timeout.
+_PULL_MAX_ATTEMPTS = 2
+_PULL_RETRY_WAIT_S = 10
 
 # The CHECK-enforced taxonomy (sql/schema_wave2.sql), in PRIORITY order:
 # truck-specific first — a multi-label FSQ place gets the most truck-relevant
@@ -628,8 +641,6 @@ def pull_overture(*, release: str | None = None,
         rel = release or discover_overture_release()
         observed_at = datetime.strptime(rel[:10], "%Y-%m-%d").replace(
             tzinfo=timezone.utc)
-        con = _duck()
-        con.execute(f"SET s3_region='{OVERTURE_REGION}'")
         # DuckDB's S3 glob needs the extension to list a public prefix; a bare
         # `/*` returns "No files found" on this bucket (verified 2026-07-22).
         src = (f"read_parquet('s3://{OVERTURE_BUCKET}/release/{rel}"
@@ -643,49 +654,85 @@ def pull_overture(*, release: str | None = None,
         limit = f"LIMIT {int(max_rows)}" if max_rows else ""
         print(f"{source_id} run {run_id}: release {rel} "
               f"({'custom bbox' if bbox else 'US bboxes'})", flush=True)
-        cur = con.execute(f"""
-            SELECT id, names.primary AS name, brand.names.primary AS brand,
-                   categories.primary AS category_source,
-                   bbox.ymin AS lat, bbox.xmin AS lon,
-                   addresses[1].freeform AS address,
-                   addresses[1].locality AS city,
-                   addresses[1].region  AS state_raw,
-                   addresses[1].postcode AS zip,
-                   phones[1] AS phone, websites[1] AS website,
-                   confidence
-            FROM {src} WHERE {where} {limit}
-        """)
+
+        # Retry the connect+select+copy step with a FRESH connection (never
+        # a reused one — see _duck() and pull_fsq()'s notes on why). The
+        # staging table is TRUNCATEd inside each attempt, so a retry is a
+        # clean rerun, not a partial-append.
+        con = None
         loaded = 0
-        with get_conn() as pg:
-            pg.execute(f'TRUNCATE "{schema}"."{table}"')
-            col_sql = ", ".join(f'"{c}"' for c in _OVERTURE_STAGING_COLS)
-            with pg.cursor() as pcur, pcur.copy(
-                f'COPY "{schema}"."{table}" ({col_sql}) FROM STDIN'
-            ) as copy:
-                while True:
-                    batch = cur.fetchmany(_COPY_BATCH)
-                    if not batch:
-                        break
-                    for (gid, name, brand, cat_src, lat, lon, address, city,
-                         st_raw, zip_, phone, website, conf) in batch:
-                        copy.write_row((
-                            gid, name, brand, cat_src, cmap[cat_src],
-                            lat, lon, address, city, state_code(st_raw), zip_,
-                            phone, website, conf, observed_at, run_id,
-                            Jsonb({"release": rel, "state_raw": st_raw}),
-                        ))
-                        loaded += 1
-                    if loaded % _PROGRESS_EVERY < _COPY_BATCH:
-                        print(f"  ... {loaded} rows staged", flush=True)
+        last_exc: BaseException | None = None
+        for attempt in range(1, _PULL_MAX_ATTEMPTS + 1):
+            if attempt > 1:
+                print(f"{source_id} run {run_id}: attempt {attempt - 1} "
+                      f"failed ({type(last_exc).__name__}: {last_exc}); "
+                      f"retrying with a fresh DuckDB connection", flush=True)
+                time.sleep(_PULL_RETRY_WAIT_S)
+            con = _duck()
+            con.execute(f"SET s3_region='{OVERTURE_REGION}'")
+            try:
+                cur = con.execute(f"""
+                    SELECT id, names.primary AS name,
+                           brand.names.primary AS brand,
+                           categories.primary AS category_source,
+                           bbox.ymin AS lat, bbox.xmin AS lon,
+                           addresses[1].freeform AS address,
+                           addresses[1].locality AS city,
+                           addresses[1].region  AS state_raw,
+                           addresses[1].postcode AS zip,
+                           phones[1] AS phone, websites[1] AS website,
+                           confidence
+                    FROM {src} WHERE {where} {limit}
+                """)
+                loaded = 0
+                with get_conn() as pg:
+                    pg.execute(f'TRUNCATE "{schema}"."{table}"')
+                    col_sql = ", ".join(f'"{c}"' for c in _OVERTURE_STAGING_COLS)
+                    with pg.cursor() as pcur, pcur.copy(
+                        f'COPY "{schema}"."{table}" ({col_sql}) FROM STDIN'
+                    ) as copy:
+                        while True:
+                            batch = cur.fetchmany(_COPY_BATCH)
+                            if not batch:
+                                break
+                            for (gid, name, brand, cat_src, lat, lon, address,
+                                 city, st_raw, zip_, phone, website,
+                                 conf) in batch:
+                                copy.write_row((
+                                    gid, name, brand, cat_src, cmap[cat_src],
+                                    lat, lon, address, city,
+                                    state_code(st_raw), zip_, phone, website,
+                                    conf, observed_at, run_id,
+                                    Jsonb({"release": rel,
+                                           "state_raw": st_raw}),
+                                ))
+                                loaded += 1
+                            if loaded % _PROGRESS_EVERY < _COPY_BATCH:
+                                print(f"  ... {loaded} rows staged",
+                                      flush=True)
+                break
+            except BaseException as exc:
+                last_exc = exc
+                con.close()
+                if attempt >= _PULL_MAX_ATTEMPTS:
+                    raise
+
+        # Diagnostic-only: a second full remote scan just to count excluded
+        # rows. It doubles this pull's network exposure for no functional
+        # value, so it must never turn an already-successful load into a
+        # failed run (2026-08-04 fsq_places incident — see pull_fsq()).
         unmapped = None
         if count_unmapped:
-            unmapped = con.execute(f"""
-                SELECT count(*) FROM {src}
-                WHERE categories.primary NOT IN ({in_list})
-                  AND {_bbox_sql('bbox.xmin', 'bbox.ymin', bbox)}
-                  AND (addresses[1].country = 'US'
-                       OR addresses[1].country IS NULL)
-            """).fetchone()[0]
+            try:
+                unmapped = con.execute(f"""
+                    SELECT count(*) FROM {src}
+                    WHERE categories.primary NOT IN ({in_list})
+                      AND {_bbox_sql('bbox.xmin', 'bbox.ymin', bbox)}
+                      AND (addresses[1].country = 'US'
+                           OR addresses[1].country IS NULL)
+                """).fetchone()[0]
+            except BaseException as exc:
+                unmapped = f"probe_failed({type(exc).__name__}: {exc})"
     except BaseException as exc:
         _finish_run(run_id, "failed", message=(str(exc) or type(exc).__name__))
         raise
@@ -762,7 +809,6 @@ def pull_fsq(*, release: str | None = None,
             print(f"{source_id} run {run_id}: {message}", flush=True)
             return 0
 
-        con = _duck()
         if mirror:
             rel = release or discover_fsq_mirror_release()
             # DuckDB can't glob generic HTTP paths — hand it an explicit,
@@ -774,10 +820,6 @@ def pull_fsq(*, release: str | None = None,
                      "newest mirrored release)")
         else:
             rel = release or discover_fsq_release()
-            escaped = token.replace("'", "''")
-            con.execute(
-                f"CREATE SECRET hf_secret (TYPE huggingface, TOKEN '{escaped}')"
-            )
             src = (f"read_parquet('hf://datasets/{FSQ_HF_DATASET}"
                    f"/release/dt={rel}/places/parquet/*.parquet')")
             basis = "HF release"
@@ -795,56 +837,115 @@ def pull_fsq(*, release: str | None = None,
         )
         limit = f"LIMIT {int(max_rows)}" if max_rows else ""
         print(f"{source_id} run {run_id}: release {rel} ({basis})", flush=True)
-        cur = con.execute(f"""
-            SELECT fsq_place_id, name, latitude, longitude, address, locality,
-                   region, postcode, tel, website,
-                   date_refreshed, date_closed, {match_expr} AS matched
-            FROM {src}
-            WHERE {base_where} AND len({match_expr}) > 0
-              AND (date_closed IS NULL OR date_closed = '') {limit}
-        """)
+
+        # Retry the connect+select+copy step with a FRESH connection.
+        #
+        # Root cause (2026-08-04 failures, ops.source_runs): the mirror pull
+        # streams 81 parquet files over plain HTTP across ~20 min with
+        # threads=4 parallel readers (_duck()). A transient network blip in
+        # ANY of those parallel readers marks the query's pending result as
+        # failed; DuckDB does not reliably re-surface the ORIGINAL exception
+        # (e.g. a resolver/connection error) to the next fetch call on that
+        # same connection/cursor — it can instead raise the generic wrapper
+        # "Invalid Input Error: Attempting to execute an unsuccessful or
+        # closed pending query result". That is what the two 08-04 09:06/
+        # 08:54 runs show: a masked *symptom*, not a new bug in this query.
+        # http_retries/http_retry_wait_ms in _duck() only cover sub-request
+        # retries (~85s of cover); they cannot recover a connection whose
+        # pending result already went bad. The only safe recovery is a whole
+        # fresh connection + fresh query, which is what this loop does. This
+        # is safe to retry because staging is TRUNCATEd inside the attempt,
+        # so a retry is a clean rerun, never a partial-append (same
+        # reasoning as the code comment already on _duck()).
+        con = None
         loaded = 0
-        with get_conn() as pg:
-            pg.execute(f'TRUNCATE "{schema}"."{table}"')
-            col_sql = ", ".join(f'"{c}"' for c in _FSQ_STAGING_COLS)
-            with pg.cursor() as pcur, pcur.copy(
-                f'COPY "{schema}"."{table}" ({col_sql}) FROM STDIN'
-            ) as copy:
-                while True:
-                    batch = cur.fetchmany(_COPY_BATCH)
-                    if not batch:
-                        break
-                    for (fid, name, lat, lon, address, city, region, zip_,
-                         tel, website, refreshed, closed, matched) in batch:
-                        slug, label = _fsq_slug(list(matched), cmap)
-                        refreshed_d = _parse_date(refreshed)
-                        observed = (
-                            datetime(refreshed_d.year, refreshed_d.month,
-                                     refreshed_d.day, tzinfo=timezone.utc)
-                            if refreshed_d else release_date
-                        )
-                        copy.write_row((
-                            fid, name, None, label, slug, lat, lon, address,
-                            city, state_code(region), zip_, tel, website,
-                            refreshed_d, _parse_date(closed), observed, run_id,
-                            Jsonb({"release": rel, "mirror": mirror,
-                                   "matched_labels": list(matched),
-                                   "region_raw": region}),
-                        ))
-                        loaded += 1
-                    if loaded % _PROGRESS_EVERY < _COPY_BATCH:
-                        print(f"  ... {loaded} rows staged", flush=True)
+        last_exc: BaseException | None = None
+        for attempt in range(1, _PULL_MAX_ATTEMPTS + 1):
+            if attempt > 1:
+                print(f"{source_id} run {run_id}: attempt {attempt - 1} "
+                      f"failed ({type(last_exc).__name__}: {last_exc}); "
+                      f"retrying with a fresh DuckDB connection", flush=True)
+                time.sleep(_PULL_RETRY_WAIT_S)
+            con = _duck()
+            if not mirror:
+                escaped = token.replace("'", "''")
+                con.execute(
+                    "CREATE SECRET hf_secret "
+                    f"(TYPE huggingface, TOKEN '{escaped}')"
+                )
+            try:
+                cur = con.execute(f"""
+                    SELECT fsq_place_id, name, latitude, longitude, address,
+                           locality, region, postcode, tel, website,
+                           date_refreshed, date_closed,
+                           {match_expr} AS matched
+                    FROM {src}
+                    WHERE {base_where} AND len({match_expr}) > 0
+                      AND (date_closed IS NULL OR date_closed = '') {limit}
+                """)
+                loaded = 0
+                with get_conn() as pg:
+                    pg.execute(f'TRUNCATE "{schema}"."{table}"')
+                    col_sql = ", ".join(f'"{c}"' for c in _FSQ_STAGING_COLS)
+                    with pg.cursor() as pcur, pcur.copy(
+                        f'COPY "{schema}"."{table}" ({col_sql}) FROM STDIN'
+                    ) as copy:
+                        while True:
+                            batch = cur.fetchmany(_COPY_BATCH)
+                            if not batch:
+                                break
+                            for (fid, name, lat, lon, address, city, region,
+                                 zip_, tel, website, refreshed, closed,
+                                 matched) in batch:
+                                slug, label = _fsq_slug(list(matched), cmap)
+                                refreshed_d = _parse_date(refreshed)
+                                observed = (
+                                    datetime(refreshed_d.year,
+                                             refreshed_d.month,
+                                             refreshed_d.day,
+                                             tzinfo=timezone.utc)
+                                    if refreshed_d else release_date
+                                )
+                                copy.write_row((
+                                    fid, name, None, label, slug, lat, lon,
+                                    address, city, state_code(region), zip_,
+                                    tel, website, refreshed_d,
+                                    _parse_date(closed), observed, run_id,
+                                    Jsonb({"release": rel, "mirror": mirror,
+                                           "matched_labels": list(matched),
+                                           "region_raw": region}),
+                                ))
+                                loaded += 1
+                            if loaded % _PROGRESS_EVERY < _COPY_BATCH:
+                                print(f"  ... {loaded} rows staged",
+                                      flush=True)
+                break
+            except BaseException as exc:
+                last_exc = exc
+                con.close()
+                if attempt >= _PULL_MAX_ATTEMPTS:
+                    raise
+
+        # Diagnostic-only: a second full remote rescan just to count
+        # excluded rows (unmapped categories / closed places). It roughly
+        # DOUBLES this pull's total network exposure for zero effect on the
+        # data actually staged, so — unlike the main load above — it must
+        # never fail the whole run. The successfully staged `loaded` rows
+        # stay published; only the diagnostic counts in the message degrade.
         counts_msg = "probe_skipped"
         if count_probe:
-            unmapped, closed_matched = con.execute(f"""
-                SELECT count(*) FILTER (WHERE len({match_expr}) = 0),
-                       count(*) FILTER (WHERE len({match_expr}) > 0
-                                        AND date_closed IS NOT NULL
-                                        AND date_closed <> '')
-                FROM {src} WHERE {base_where}
-            """).fetchone()
-            counts_msg = (f"unmapped_categories_excluded={unmapped}; "
-                          f"closed_excluded={closed_matched}")
+            try:
+                unmapped, closed_matched = con.execute(f"""
+                    SELECT count(*) FILTER (WHERE len({match_expr}) = 0),
+                           count(*) FILTER (WHERE len({match_expr}) > 0
+                                            AND date_closed IS NOT NULL
+                                            AND date_closed <> '')
+                    FROM {src} WHERE {base_where}
+                """).fetchone()
+                counts_msg = (f"unmapped_categories_excluded={unmapped}; "
+                              f"closed_excluded={closed_matched}")
+            except BaseException as exc:
+                counts_msg = f"probe_failed({type(exc).__name__}: {exc})"
     except BaseException as exc:
         _finish_run(run_id, "failed", message=(str(exc) or type(exc).__name__))
         raise

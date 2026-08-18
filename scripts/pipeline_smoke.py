@@ -60,6 +60,16 @@ EXPECTED_UNITS = {
     "truckintel-ops-watch": timedelta(hours=3),
     "truckintel-nightly-checks": timedelta(days=2),
     "truckintel-fuel-verify": timedelta(days=9),
+    # Both daily (10:45 and 05:20), so 2d for the same reason the other daily
+    # jobs get it: the laptop is off at the nominal time and Persistent=true
+    # catch-up can land a run a day late without anything being wrong.
+    # Added 2026-08-18 — this dict had never listed either of them, so
+    # check_unit_files silently checked 14 of 16 units. See
+    # check_units_are_all_known below, which is why that can no longer happen.
+    "truckintel-git-push": timedelta(days=2),
+    "truckintel-liveness": timedelta(days=2),
+    # Every 2h while armed; 3h of slack for the RandomizedDelay-free gap timer.
+    "truckintel-status-push": timedelta(hours=3),
 }
 
 # The data Boss named: "daily fuel prize update ho, truck routes, mechanic
@@ -81,20 +91,102 @@ DATA_SLO = {
     # report it. OnCalendar=*-*-01.
     "businesses_conflate": ("business POIs (Overture + FSQ conflation)",
                             timedelta(days=45)),
+    # The mechanic deliverable itself. Added 2026-08-18: scripts/mechanic_list.py
+    # wrote no run rows at all until then, so the headline liveness feature was
+    # the one derived product with no staleness alerting of any kind.
+    "mechanic_list": ("truck mechanic list (Overture + licences + OSM)",
+                      timedelta(days=2)),
+    # The self-checks, watched the same way they watch everything else. If the
+    # nightly self-check silently stops RUNNING, its own FAIL path never fires
+    # — only a staleness budget catches that. Both run from
+    # truckintel-nightly-checks, daily.
+    #
+    # route_rebuild is deliberately absent: `--check` writes no success row when
+    # the graph is current (a success there would forge staleness()'s own "last
+    # real rebuild" signal), so its newest success is the last actual rebuild
+    # and a freshness budget on it would report stale forever.
+    "pipeline_smoke": ("nightly self-check (units, freshness, alerting)",
+                       timedelta(days=2)),
+    "verify_claims": ("published-figure verification", timedelta(days=2)),
+    # 3d against a daily unit: its own ops.sources SLO is 72 h.
+    "chain_sites": ("truck-chain store locators (All The Places)",
+                    timedelta(days=3)),
+    # Its ops.sources SLO is 36 h against a daily unit; 2d here matches the
+    # EXPECTED_UNITS cadence for a daily job that may slip a day when the
+    # laptop is off at 03:30.
+    "quality_nightly": ("quality ladder (gates 4-5 + confidence rescore)",
+                        timedelta(days=2)),
 }
 
 # unit stem -> the source_id whose freshness that unit is responsible for.
 # Only units that feed a DATA_SLO entry need to appear; the rest are covered
 # by their own checks.
+# unit -> the source ids it is responsible for. Values are tuples because
+# truckintel-nightly-checks drives three sources from one timer; a 1:1 dict
+# could not say so, and the two it could not name showed up as "cadence
+# unknown" warnings instead (2026-08-18).
+#
+# NOTE the cadence deliberately lives here and not in ops.sources.schedule_minutes:
+# truckintel/jobs.py:55 enqueues work for every source WHERE schedule_minutes
+# IS NOT NULL, so filling that column in to silence a warning would hand these
+# scripts to the queue worker as if they were fetchable feeds.
 UNIT_FEEDS = {
-    "truckintel-aaa-prices": "aaa_daily",
-    "truckintel-osm-truck-repair": "osm_truck_repair_overpass",
-    "truckintel-pois": "osm_pois",
-    "truckintel-businesses": "businesses_conflate",
+    "truckintel-aaa-prices": ("aaa_daily",),
+    "truckintel-osm-truck-repair": ("osm_truck_repair_overpass",),
+    "truckintel-pois": ("osm_pois",),
+    "truckintel-businesses": ("businesses_conflate",),
+    "truckintel-mechanics-daily": ("mechanic_list",),
+    "truckintel-nightly-checks": ("pipeline_smoke", "verify_claims"),
+    # chain_sites runs from the liveness unit's second ExecStart, not a timer
+    # of its own — deploy/truckintel-liveness.service:26.
+    "truckintel-liveness": ("chain_sites",),
+    "truckintel-quality": ("quality_nightly",),
 }
+# Flat view for the membership tests below.
+_FED_SOURCES = {sid for sids in UNIT_FEEDS.values() for sid in sids}
 
 _OK, _WARN, _FAIL = "PASS", "WARN", "FAIL"
 _results: list[tuple[str, str, str]] = []
+
+# Audited under its own source id — the deploy/truckintel-nightly-checks.service
+# comment claimed "ops_watch is what escalates" while this script only ever
+# printed to a journal nobody reads. Same pattern as osm_extract.py /
+# chain_sites.py: seed ops.sources once, one ops.source_runs row per run, so
+# ops_watch's existing queries (check_repeated_failures, check_never_succeeded)
+# and the new check_selfcheck_failures() see this the same way they see every
+# real data source.
+SOURCE_ID = "pipeline_smoke"
+SLO_HOURS = 48   # matches EXPECTED_UNITS["truckintel-nightly-checks"] above
+
+_SEED_SQL = """
+INSERT INTO ops.sources
+    (source_id, name, owner, kind, load_pattern, schedule_minutes, slo_hours,
+     enabled, verify_status)
+VALUES
+    (%(sid)s,
+     'Derived: nightly pipeline smoke test (unit files, flags, install, '
+     'data freshness)',
+     'truck-intel ops track', 'derived', 'derived', NULL, %(slo)s,
+     TRUE, 'verified')
+ON CONFLICT (source_id) DO NOTHING
+"""
+
+
+def _start_run() -> int:
+    with get_conn() as conn:
+        conn.execute(_SEED_SQL, {"sid": SOURCE_ID, "slo": SLO_HOURS})
+        return conn.execute(
+            "INSERT INTO ops.source_runs (source_id, status) "
+            "VALUES (%s, 'running') RETURNING run_id", (SOURCE_ID,)
+        ).fetchone()[0]
+
+
+def _finish_run(run_id: int, status: str, *, message: str | None = None) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ops.source_runs SET status = %s, finished_at = now(), "
+            "message = %s WHERE run_id = %s",
+            (status, (message or "")[:1000] or None, run_id))
 
 
 def report(status: str, check: str, detail: str) -> None:
@@ -103,6 +195,30 @@ def report(status: str, check: str, detail: str) -> None:
 
 
 # ------------------------------------------------------------- unit file checks
+
+def check_units_are_all_known() -> None:
+    """Every timer in deploy/ must be listed in EXPECTED_UNITS.
+
+    EXPECTED_UNITS is hand-maintained because each entry carries a cadence the
+    glob cannot know. That is fine; silently checking a subset is not. On
+    2026-08-18 a review found truckintel-liveness.timer missing from three
+    separate hand-written lists, and this dict turned out to be a fourth: it
+    listed 14 of the 16 timers, so the two it had never heard of — git-push
+    and liveness — were exempt from every check in this file.
+
+    A unit that should not be held to these checks still has to say so out
+    loud, by being listed here, rather than by being forgotten.
+    """
+    on_disk = {p.stem for p in DEPLOY.glob("truckintel-*.timer")}
+    unknown = sorted(on_disk - set(EXPECTED_UNITS))
+    if unknown:
+        report(_FAIL, "unit inventory",
+               f"deploy/ has {len(unknown)} timer(s) absent from "
+               f"EXPECTED_UNITS, so nothing checks them: {unknown}")
+    else:
+        report(_OK, "unit inventory",
+               f"all {len(on_disk)} timers in deploy/ are listed in EXPECTED_UNITS")
+
 
 def check_unit_files() -> None:
     """Every expected unit exists, and its ExecStart points at a real script.
@@ -293,7 +409,7 @@ def check_schedule_beats_slo() -> None:
                    f"runs every {sched_min}min but SLO is {slo_h}h — "
                    f"can never be met")
     unscheduled = [s for s, m, h in rows if m is None and h is not None
-                   and s not in UNIT_FEEDS.values()]
+                   and s not in _FED_SOURCES]
     report(_OK, "schedule vs SLO", f"{checked} scheduled sources checked")
     if unscheduled:
         report(_WARN, "cadence unknown",
@@ -314,7 +430,8 @@ def check_cadence_beats_budget() -> None:
     Cadence comes from EXPECTED_UNITS, which is the interval the unit-file
     checks already hold the timer to, so the two cannot drift apart.
     """
-    for unit, source_id in sorted(UNIT_FEEDS.items()):
+    for unit, source_id in sorted(
+            (u, sid) for u, sids in UNIT_FEEDS.items() for sid in sids):
         cadence = EXPECTED_UNITS.get(unit)
         entry = DATA_SLO.get(source_id)
         if cadence is None or entry is None:
@@ -380,10 +497,40 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-cheap", action="store_true",
                     help="also execute the daily jobs end to end")
+    # For CI, which has a checkout and nothing else: no database, no systemd
+    # user manager, no ingested data. Only the two checks that are answerable
+    # from the repo alone — every deploy/ unit resolves to a real script, and
+    # every flag it passes is one that script accepts. Those are exactly the
+    # failures a unit file cannot catch and a scheduled run finds at 05:00.
+    #
+    # This flag is why the CI step no longer ends in `|| true`. It used to,
+    # because the full run needs a database and CI's fast job has none, so the
+    # step crashed on every push and the discarded exit code hid it — the check
+    # built to catch drift had been dead for its whole life.
+    ap.add_argument("--units-only", action="store_true",
+                    help="only the repo-answerable checks; no DB, no systemd, "
+                         "no run row. Intended for CI.")
     args = ap.parse_args()
     load_dotenv()
 
+    if args.units_only:
+        print("=== pipeline smoke: unit files (units-only) ===", flush=True)
+        check_units_are_all_known()
+        check_unit_files()
+        check_flags_exist()
+        fails = [r for r in _results if r[0] == _FAIL]
+        warns = [r for r in _results if r[0] == _WARN]
+        print(f"\n=== {len(_results)} checks: "
+              f"{len(_results) - len(fails) - len(warns)} pass, "
+              f"{len(warns)} warn, {len(fails)} fail ===", flush=True)
+        for status, check, detail in fails + warns:
+            print(f"  [{status}] {check}: {detail}", flush=True)
+        return 1 if fails else 0
+
+    run_id = _start_run()
+
     print("=== pipeline smoke: unit files ===", flush=True)
+    check_units_are_all_known()
     check_unit_files()
     check_flags_exist()
     print("\n=== pipeline smoke: installation ===", flush=True)
@@ -405,6 +552,14 @@ def main() -> int:
           f"{len(warns)} warn, {len(fails)} fail ===", flush=True)
     for status, check, detail in fails + warns:
         print(f"  [{status}] {check}: {detail}", flush=True)
+
+    if fails:
+        _finish_run(run_id, "failed",
+                    message=f"{len(fails)} FAIL, {len(warns)} WARN: "
+                    + "; ".join(f"{c}: {d}" for _, c, d in fails))
+    else:
+        _finish_run(run_id, "success",
+                    message=f"{len(_results)} checks, {len(warns)} warn")
     return 1 if fails else 0
 
 

@@ -20,6 +20,9 @@ WHAT THIS CHECKS (each is a distinct failure the others miss)
   4. disarmed alerting   — a source still running while ops.sources says
                            disabled, i.e. freshness_check skips it entirely
   5. queue backlog       — jobs queued and not progressing
+  6. self-check failure  — pipeline_smoke / verify_claims / route_rebuild
+                           --check failed, escalated on the FIRST failure
+                           since they only run once a day (see SELFCHECK_SOURCES)
 
 DEDUPLICATION: state lives in data/ops_watch_state.json. A condition already
 alerted within --cooldown hours is counted but not re-sent. Without this, an
@@ -61,6 +64,17 @@ STATE_FILE = REPO / "data" / "ops_watch_state.json"
 # Caught by testing it against a week that really did contain 19 failures.
 TEST_PREFIX_LIKE = r"\_%"
 
+# scripts/pipeline_smoke.py, scripts/verify_claims.py and
+# scripts/route_rebuild.py --check are the nightly self-checks
+# (truckintel-nightly-checks.service, 03:50 daily) — the jobs whose entire
+# purpose is to catch drift before Boss does. They run ONCE a day, not once
+# every few minutes like a real source, so check_repeated_failures' 2-in-24h
+# threshold and check_never_succeeded's 3-runs floor both mean the very
+# checker built to close the "a nightly self-check can fail and nobody is
+# told" gap could itself sit broken for a day (or three) before anyone heard.
+# See check_selfcheck_failures() below.
+SELFCHECK_SOURCES = ("pipeline_smoke", "verify_claims", "route_rebuild")
+
 
 def _rows(sql: str, params=()) -> list[tuple]:
     with get_conn() as conn:
@@ -83,6 +97,34 @@ def check_repeated_failures(window_h: int, threshold: int) -> list[dict]:
             "severity": "high",
             "text": (f"{source_id}: {fails} failed run(s) in {window_h}h\n"
                      f"    last error: {(last_msg or '(no message)')[:160]}"),
+        })
+    return out
+
+
+def check_selfcheck_failures(window_h: int) -> list[dict]:
+    """Any single failure of a once-a-day nightly self-check, escalated now.
+
+    Unlike check_repeated_failures, this does not wait for a second failure —
+    a source that retries every 5 minutes can shrug off one bad tick, but a
+    job that only runs once a day cannot: waiting for a repeat means waiting
+    a full extra day before hearing about it. window_h is wider than 24 on
+    purpose, to survive the timer's own RandomizedDelaySec jitter without a
+    finding ever falling just outside the window.
+    """
+    out = []
+    for source_id, run_id, msg, started in _rows("""
+        SELECT DISTINCT ON (source_id) source_id, run_id, message, started_at
+        FROM ops.source_runs
+        WHERE source_id = ANY(%s) AND status = 'failed'
+          AND started_at > now() - (%s || ' hours')::interval
+        ORDER BY source_id, started_at DESC
+    """, (list(SELFCHECK_SOURCES), window_h)):
+        out.append({
+            "key": f"selfcheck/{source_id}",
+            "severity": "high",
+            "text": (f"{source_id}: nightly self-check FAILED (run {run_id}, "
+                     f"{started:%Y-%m-%d %H:%M} UTC)\n"
+                     f"    {(msg or '(no message)')[:200]}"),
         })
     return out
 
@@ -201,6 +243,11 @@ def main() -> int:
     ap.add_argument("--window-hours", type=int, default=24)
     ap.add_argument("--fail-threshold", type=int, default=2,
                     help="failed runs in the window before it is a finding")
+    ap.add_argument("--selfcheck-hours", type=int, default=30,
+                    help="a nightly self-check (pipeline_smoke, verify_claims, "
+                         "route_rebuild) failing within this window is escalated "
+                         "on its FIRST failure, not its second — see "
+                         "check_selfcheck_failures()")
     ap.add_argument("--stuck-hours", type=int, default=6,
                     help="a run still 'running' this long is a dead worker "
                          "(longest real job here is ~3 h)")
@@ -216,6 +263,7 @@ def main() -> int:
     load_dotenv()
 
     findings = (check_repeated_failures(args.window_hours, args.fail_threshold)
+                + check_selfcheck_failures(args.selfcheck_hours)
                 + check_never_succeeded()
                 + check_stuck_runs(args.stuck_hours)
                 + check_alerting_disarmed()
