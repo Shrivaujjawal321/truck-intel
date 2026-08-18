@@ -248,11 +248,18 @@ def test_promoted_wzdx_yaml_are_valid():
     """The four wave-1 feeds promoted per research/live-ops.md license
     verification load through the real registry validation."""
     by_id = {s["id"]: s for s in load_registry(REPO_ROOT / "registry")}
-    for sid, state_url in [
-        ("wzdx_wa", "wzdx.wsdot.wa.gov"),
-        ("wzdx_mn", "mn.carsprogram.org"),
-        ("wzdx_ks", "ks.carsprogram.org"),
-        ("wzdx_az", "az511.com"),
+    # Cadence is pinned per feed, not as one shared number. wzdx_mn moved to
+    # hourly on 2026-08-18: it stalls roughly every other attempt (84 of 175
+    # runs in a week died on a 60s read timeout, and after polite_get gained a
+    # retry the survivors were runs where BOTH attempts hung), and its SLO is
+    # 24 h, so 96 polls a day was over-polling a struggling state-DOT server.
+    # Keeping the assertion per-feed means the pin still catches an accidental
+    # change to the other three.
+    for sid, state_url, sched in [
+        ("wzdx_wa", "wzdx.wsdot.wa.gov", 15),
+        ("wzdx_mn", "mn.carsprogram.org", 60),
+        ("wzdx_ks", "ks.carsprogram.org", 15),
+        ("wzdx_az", "az511.com", 15),
     ]:
         src = by_id[sid]
         assert state_url in src["url"]
@@ -260,7 +267,7 @@ def test_promoted_wzdx_yaml_are_valid():
         assert src["load_pattern"] == "event_lifecycle"
         assert src["parser"] == "wzdx"
         assert src["target"] is None                # event feeds never swap
-        assert src["schedule_minutes"] == 15
+        assert src["schedule_minutes"] == sched
         assert src["slo_hours"] == 24
         assert src["gates"]["min_rows"] == 0
         assert src["auth"] is None                  # wave 1 = open feeds only
