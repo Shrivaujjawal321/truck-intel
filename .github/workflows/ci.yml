@@ -16,6 +16,7 @@
 #   full   — spins up PostGIS and runs the whole suite (~11 min locally).
 # A pull request gets both; a push to a branch gets `fast` only, because
 # waiting 11 minutes to learn about a syntax error is how CI gets ignored.
+# `full` also runs nightly on a schedule — see the `on:` block for why.
 
 name: ci
 
@@ -24,6 +25,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The full suite is gated on `pull_request` below. This repo has zero PRs —
+  # it is solo direct-push — so before 2026-08-18 the PostGIS suite had never
+  # run automatically even once, and its last manual run was 15 commits stale.
+  # A nightly run against main is what actually closes that hole.
+  schedule:
+    - cron: '30 20 * * *'   # 20:30 UTC = 02:00 IST, after the local timers settle
 
 concurrency:
   # A newer push makes an in-flight run irrelevant; don't burn minutes on it.
@@ -37,6 +44,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # preflight_secrets.sh asks whether .env was EVER committed. The
+          # default depth-1 checkout has no history to answer that with, so the
+          # check would pass vacuously — the worst kind of green.
+          fetch-depth: 0
+
+      # First step on purpose: needs nothing installed, and a published
+      # credential should stop the build before anything slower runs.
+      # Added 2026-08-18, after a review found the live database password was
+      # the dev default committed to this (public) repo.
+      - name: Preflight — no published secrets
+        run: ./scripts/preflight_secrets.sh
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -52,11 +71,11 @@ jobs:
       - name: Byte-compile every script
         run: uv run python -m compileall -q scripts truckintel api
 
+      # The list lives in the Makefile's FAST_TESTS and nowhere else. It was
+      # spelled out here too until 2026-08-18; a test added to one copy and not
+      # the other simply would not run, and nothing would say so.
       - name: Fast tests
-        run: |
-          uv run pytest -q \
-            tests/test_mechanic_enrich.py tests/test_registry.py \
-            tests/test_validate.py tests/test_parsers.py tests/test_politeness.py
+        run: make test-fast
 
       # Registry YAML is config that reaches SQL, so a typo here is a
       # production failure, not a lint nit. load_registry validates the
@@ -66,6 +85,12 @@ jobs:
       # to a space and the `\` survives as a literal line-continuation
       # character mid-statement, which Python rejects. Caught by this workflow's
       # own first run.
+      # Cheap and DB-free, so it belongs here rather than in `full`: the apply
+      # order is the single source the schema step below reads, and a file
+      # missing from it is exactly the defect this check exists for.
+      - name: Check schema apply order
+        run: ./scripts/check_schema_order.sh
+
       - name: Validate the source registry
         run: |
           uv run python - <<'PY'
@@ -77,8 +102,14 @@ jobs:
       # The pipeline's own checks that need no DB: every deploy/ unit exists,
       # its ExecStart resolves to a real script, and every flag it passes is
       # one the script actually accepts.
+      #
+      # `--units-only` and no `|| true`, both since 2026-08-18. The bare call
+      # needs a database and this job has none, so it crashed on every push and
+      # the discarded exit code hid that — the drift check had been dead for
+      # its entire life. Now it runs the repo-answerable checks and its failure
+      # actually fails the build.
       - name: Pipeline unit-file checks
-        run: uv run python scripts/pipeline_smoke.py || true
+        run: uv run python scripts/pipeline_smoke.py --units-only
 
   full:
     name: full suite (PostGIS)
@@ -119,12 +150,15 @@ jobs:
       # applied by hand — so a database built from the repo alone was missing
       # it and this step failed on the dangling reference. Building on a clean
       # container every run is precisely what surfaced it.
+      # The list lives in sql/apply-order.txt, which `make schema-all` and the
+      # bootstrap doc also read. It used to be spelled out here by hand, and on
+      # 2026-08-18 this copy — along with the other two — was found to be
+      # missing sql/schema_liveness.sql, added the day before.
       - name: Apply schema
         run: |
-          for f in sql/schema.sql sql/schema_phase2.sql sql/schema_routes.sql \
-                   sql/schema_wave2.sql sql/schema_tracking.sql; do
-            echo "--- $f"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+          grep -vE '^[[:space:]]*(#|$)' sql/apply-order.txt | while read -r f; do
+            echo "--- sql/$f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "sql/$f"
           done
 
       - name: Full test suite

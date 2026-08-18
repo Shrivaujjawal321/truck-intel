@@ -1,0 +1,24 @@
+# Canonical apply order for the schema. THIS FILE IS THE SINGLE SOURCE.
+#
+# The order is a dependency chain, not a preference: sql/schema_tracking.sql
+# references core.truck_routes, which only sql/schema_routes.sql creates. A
+# database built from the repo alone fails on the dangling reference otherwise.
+#
+# Read by:
+#   - `make schema-all`
+#   - the `full` job in .github/workflows/ci.yml
+#   - READ-ME-FIRST.txt, which just tells you to run `make schema-all`
+#
+# Before 2026-08-18 those were three separately hand-maintained lists, and all
+# three had silently forgotten sql/schema_liveness.sql — added the day before.
+# Nothing warned. scripts/check_schema_order.sh now fails the build if a
+# sql/schema*.sql file exists that is not listed here.
+#
+# Blank lines and #-comments are ignored.
+
+schema.sql
+schema_phase2.sql
+schema_routes.sql
+schema_wave2.sql
+schema_tracking.sql
+schema_liveness.sql

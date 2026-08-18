@@ -1,6 +1,7 @@
 """Gates 1-2 unit tests — pure functions, no DB, no network."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -242,8 +243,21 @@ def test_gate2_point_only_behaviour_is_unchanged():
 # rejecting legitimate NWS marine polygons or cross-border WZDx work zones —
 # measured at adoption (2026-07-23): 2,180 NWS + 13,710 WZDx rows, 0 rejects.
 # Skips when the raw cache is absent (fresh clone / CI without a fetch).
+#
+# Bounded to the most recent RAW_SAMPLE files per parser, newest first, as of
+# 2026-08-18. It used to parse the entire cache. That was fine at adoption
+# (2,180 + 13,710 rows) but data/raw/ is gitignored and unpruned, so by August
+# it was 6 GB / 8,560 files and this test no longer finished in 8 minutes —
+# it had quietly become the slowest thing in the "fast" pre-commit loop while
+# being a no-op in CI, where data/raw/ does not exist at all.
+#
+# The sample is deterministic (path sort; the layout is <source>/<date>/<file>,
+# so newest-last sorts chronologically) — not random, so a failure reproduces.
+# Set TRUCKINTEL_RAW_SAMPLE=all for the exhaustive pass when deliberately
+# re-validating a gate change against the whole cache.
 
 RAW_ROOT = Path(__file__).resolve().parent.parent / "data" / "raw"
+RAW_SAMPLE = os.environ.get("TRUCKINTEL_RAW_SAMPLE", "60")
 
 
 @pytest.mark.parametrize("parser_name, glob_pat", [
@@ -252,10 +266,12 @@ RAW_ROOT = Path(__file__).resolve().parent.parent / "data" / "raw"
 ])
 def test_gate2_accepts_all_real_cached_feed_geometry(parser_name, glob_pat):
     import importlib
-    files = [p for p in RAW_ROOT.glob(glob_pat)
-             if not p.name.endswith(".meta.json")]
+    files = sorted(p for p in RAW_ROOT.glob(glob_pat)
+                   if not p.name.endswith(".meta.json"))
     if not files:
         pytest.skip(f"no cached {parser_name} payloads under {RAW_ROOT}")
+    if RAW_SAMPLE != "all":
+        files = files[-int(RAW_SAMPLE):]
     parser = importlib.import_module(f"truckintel.parsers.{parser_name}")
 
     total = 0

@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking schema-liveness chain-sites liveness liveness-report route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers
+.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking schema-liveness chain-sites liveness liveness-report route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers preflight-secrets rotate-track-password schema-all check-schema-order test-fast status-push status-push-dry status-push-arm status-push-stop
 
 db-up:
 	./scripts/db_up.sh
@@ -90,6 +90,56 @@ fuel-routes-report:
 # Tracking tables + the narrow ingest role (idempotent).
 schema-tracking:
 	./scripts/db_psql.sh -v ON_ERROR_STOP=1 < sql/schema_tracking.sql
+
+# Refuse to build if a credential is published (or the DB is on 0.0.0.0).
+# Static checks only in CI, where there is no .env; the full set locally.
+preflight-secrets:
+	./scripts/preflight_secrets.sh
+
+# Periodic Telegram health digest. Silent until armed; stops itself after N.
+status-push:
+	uv run python scripts/status_push.py
+
+status-push-dry:
+	uv run python scripts/status_push.py --dry-run
+
+# make status-push-arm N=5
+status-push-arm:
+	uv run python scripts/status_push.py --arm $(or $(N),5)
+	systemctl --user enable --now truckintel-status-push.timer
+	systemctl --user list-timers truckintel-status-push.timer --no-pager
+
+status-push-stop:
+	uv run python scripts/status_push.py --disarm
+	-systemctl --user disable --now truckintel-status-push.timer
+
+# Apply every schema file, in the order sql/apply-order.txt declares. Use this
+# rather than naming files by hand — three hand-maintained lists is how
+# sql/schema_liveness.sql got missed everywhere on 2026-08-18.
+schema-all:
+	./scripts/check_schema_order.sh
+	@grep -vE '^[[:space:]]*(#|$$)' sql/apply-order.txt | while read -r f; do \
+	   echo "--- sql/$$f"; \
+	   ./scripts/db_psql.sh -v ON_ERROR_STOP=1 -q < "sql/$$f" || exit 1; \
+	 done
+	@echo "schema-all: applied"
+
+# Cheap, DB-free: is any schema file missing from the canonical apply order?
+check-schema-order:
+	./scripts/check_schema_order.sh
+
+# Rotate the narrow tracking-ingest role and write the new DSN into .env.
+# sql/schema_tracking.sql deliberately ships no password literal, so this is
+# how the role gets a usable one. Prints nothing secret.
+rotate-track-password:
+	@pw=$$(openssl rand -hex 24); \
+	 printf "ALTER ROLE truckintel_track WITH PASSWORD '%s';\n" "$$pw" \
+	   | ./scripts/db_psql.sh -v ON_ERROR_STOP=1 -q >/dev/null; \
+	 cp -a .env .env.bak-$$(date +%Y%m%d-%H%M%S) && chmod 600 .env.bak-*; \
+	 python3 -c "import re,sys,pathlib; p=pathlib.Path('.env'); \
+	   p.write_text(''.join(re.sub(r'(://[^:/@]+:)[^@]*(@)', r'\g<1>'+sys.argv[1]+r'\g<2>', l) if l.startswith('TRACK_DATABASE_URL=') else l for l in p.read_text().splitlines(keepends=True)))" "$$pw"; \
+	 chmod 600 .env; \
+	 echo "truckintel_track: password rotated, TRACK_DATABASE_URL updated in .env"
 
 # Weekly OSM POI refresh: fetch the Geofabrik extract only if its published md5
 # changed, then re-run the POI pass and re-derive truck-route columns.
@@ -210,15 +260,33 @@ mechanics-fill:
 # No `-m "not needs_db"`: needs_db is a skipif marker, not a registered one, so
 # -m would match nothing. These files are DB-free by construction, and any
 # DB-backed case inside them skips itself when PostGIS is unreachable.
-ci-fast:
+# The tests that need neither a database nor ingested data. THIS IS THE SINGLE
+# SOURCE — .github/workflows/ci.yml runs `make test-fast` rather than repeating
+# the list, because it was repeated, and two copies of a list is how a list goes
+# stale. (See sql/apply-order.txt and pipeline_smoke's EXPECTED_UNITS guard for
+# the same lesson learned twice more on 2026-08-18.)
+FAST_TESTS := tests/test_mechanic_enrich.py tests/test_registry.py \
+              tests/test_validate.py tests/test_parsers.py \
+              tests/test_politeness.py tests/test_mechanic_state_floor.py
+
+test-fast:
+	uv run pytest -q $(FAST_TESTS)
+
+ci-fast: preflight-secrets
 	uv run python -m compileall -q scripts truckintel api
-	uv run pytest -q tests/test_mechanic_enrich.py tests/test_registry.py \
-	  tests/test_validate.py tests/test_parsers.py tests/test_politeness.py
+	$(MAKE) test-fast
 
 ci: ci-fast
 	uv run pytest -q
+	@# Advisory, and deliberately so: on a laptop the timers do not run while the
+	@# machine is off, so sources are legitimately stale here and a hard failure
+	@# would be noise. It is printed, not enforced — do NOT read a green `make ci`
+	@# as "freshness is fine". The enforcing copy is the hourly ops-watch timer,
+	@# which escalates over Telegram. Kept explicit after 2026-08-18, when a
+	@# review found several discarded exit codes that nobody knew were discarded.
+	@echo "--- freshness (advisory on a dev machine; not a gate) ---"
 	uv run python scripts/freshness_check.py || true
-	@echo "ci: OK"
+	@echo "ci: OK (freshness above is advisory)"
 
 # Prove the scheduled pipeline actually works end to end, against the live DB,
 # without waiting a day for the timers. See scripts/pipeline_smoke.py.
@@ -256,12 +324,10 @@ install-timers:
 	    $(HOME)/.config/systemd/user/truckintel-$$u.service.d/11-wait-dns.conf; \
 	done
 	systemctl --user daemon-reload
-	systemctl --user enable --now \
-	  truckintel-tick.timer truckintel-freshness.timer truckintel-quality.timer \
-	  truckintel-aaa-prices.timer truckintel-pois.timer \
-	  truckintel-osm-truck-repair.timer truckintel-mechanics.timer \
-	  truckintel-mechanics-daily.timer truckintel-businesses.timer \
-	  truckintel-track-prune.timer truckintel-weekly-digest.timer \
-	  truckintel-ops-watch.timer truckintel-nightly-checks.timer \
-	  truckintel-fuel-verify.timer truckintel-git-push.timer
+	@# Every timer in deploy/ gets enabled. This was a hand-written list of 15
+	@# until 2026-08-18, when a review found truckintel-liveness.timer had been
+	@# installed but never enabled — the list simply forgot it. A glob cannot
+	@# forget. If a timer should NOT run, delete it from deploy/ or give it a
+	@# non-firing schedule; do not express that by omitting it here.
+	systemctl --user enable --now $(notdir $(wildcard deploy/truckintel-*.timer))
 	systemctl --user list-timers 'truckintel-*'
