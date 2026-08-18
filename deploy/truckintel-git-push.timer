@@ -1,12 +1,21 @@
-# Daily, late morning: nominal schedules for the data jobs are 03:15-06:30,
-# but the laptop is off then and Persistent=true catch-up lands them at login
-# (~08:40-10:00 observed). 10:45 is after the whole batch has settled, so the
-# pushed snapshot reflects today's data, not yesterday's.
+# Every 2 hours at :45. Was daily at 10:45 until 2026-08-18 — chosen because
+# the data jobs run 03:15-06:30 nominally and land ~08:40-10:00 as catch-up at
+# login, so 10:45 was the first moment a pushed snapshot reflected today's
+# data. On a 2-hourly cadence most runs will find the snapshot unchanged and
+# commit nothing, which is the intended cost: the job's other half is pushing
+# local commits that would otherwise sit unpushed (on 2026-08-05 main was four
+# commits ahead of origin with nobody noticing), and two hours is a much
+# shorter window for that to go unnoticed than a day.
+#
+# Persistent=true still: systemd coalesces every missed calendar run into a
+# single catch-up, so an overnight-off laptop pushes once at login, not twelve
+# times. That is the opposite of truckintel-status-push.timer, where each fire
+# would be a separate message and catch-up would arrive as a burst.
 [Unit]
-Description=daily truck-intel snapshot push to GitHub
+Description=truck-intel snapshot push to GitHub (every 2h)
 
 [Timer]
-OnCalendar=*-*-* 10:45:00
+OnCalendar=*-*-* 00/2:45:00
 Persistent=true
 RandomizedDelaySec=5m
 
