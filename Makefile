@@ -107,6 +107,7 @@ status-push-dry:
 status-push-arm:
 	uv run python scripts/status_push.py --arm $(or $(N),5)
 	systemctl --user enable --now truckintel-status-push.timer
+	@echo "first update arrives in 2h; to send one now: make status-push"
 	systemctl --user list-timers truckintel-status-push.timer --no-pager
 
 status-push-stop:

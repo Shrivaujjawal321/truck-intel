@@ -9,7 +9,18 @@
 Description=truck-intel status digest timer (every 2h while armed)
 
 [Timer]
-OnActiveSec=1min
+# BOTH are 2h, and that is the fix for a real bug. This was OnActiveSec=1min
+# so the first update arrived promptly after arming — but OnActiveSec counts
+# from every TIMER activation, and `make install-timers` re-enables every
+# timer. Running it at 18:09 on 2026-08-18 scheduled an extra update for
+# 18:10, thirteen minutes after the previous one instead of two hours.
+# Re-installing units must not be able to send a message.
+#
+# OnUnitActiveSec counts from the last time the SERVICE ran, so a manual
+# `systemctl --user start truckintel-status-push.service` also resets the gap
+# — which is what you want: the next one is two hours after the last one that
+# actually went out, however it went out.
+OnActiveSec=2h
 OnUnitActiveSec=2h
 AccuracySec=1m
 Persistent=false
