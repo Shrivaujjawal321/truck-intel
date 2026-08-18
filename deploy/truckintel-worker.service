@@ -7,6 +7,19 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=%h/Documents/truck-intel
+# The After= line above is a no-op: neither target exists in the systemd USER
+# manager, so this starts seconds after login whatever the network is doing.
+# Every timer-driven job closes that gap with a wait_ready dropin; the worker
+# never did, and the worker is what performs ALL the fetching. On 2026-08-18
+# nine sources — ntad_parking, nws_alerts, wzdx_ks/mn/wa, caltrans d02/d03/d09
+# and eia_diesel — failed inside SIX SECONDS at 07:00:48, each on "Max retries
+# exceeded" against a different host. Nine hosts do not fail together; the
+# resolver was not up yet.
+#
+# Inline rather than a dropin because the worker is deliberately excluded from
+# NET_UNITS and the batch slice (it is long-running, not a timer job), so the
+# gate has to travel with the unit.
+ExecStartPre=%h/Documents/truck-intel/scripts/wait_ready.sh --dns --db --timeout 180
 ExecStart=%h/.local/bin/uv run python -m truckintel.engine worker
 Restart=on-failure
 RestartSec=10
