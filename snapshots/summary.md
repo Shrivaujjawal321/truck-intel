@@ -23,7 +23,7 @@ PostGIS database — this file is the heartbeat.
 
 | source | age |
 |---|---|
-| aaa_daily | 32h |
+| aaa_daily | 33h |
 | businesses_conflate | 641h |
 | caltrans_cwwp2_cc_d02 | 0h |
 | caltrans_cwwp2_cc_d03 | 0h |
@@ -31,19 +31,20 @@ PostGIS database — this file is the heartbeat.
 | chain_sites | 5h |
 | eia_diesel | 5h |
 | liveness | 5h |
-| nbi_annual | 146h |
+| mechanic_list | 0h |
+| nbi_annual | 147h |
 | ntad_national_network | 101h |
 | ntad_parking | 5h |
-| nti_tunnels | 143h |
+| nti_tunnels | 144h |
 | nws_alerts | 0h |
-| osm_pois | 639h |
+| osm_pois | 640h |
 | osm_truck_repair_overpass | 5h |
 | osm_ways | 27h |
 | overture_places | 642h |
 | pipeline_smoke | 0h |
 | quality_nightly | 0h |
 | quality_rescore | 522h |
-| route_rebuild | 527h |
+| route_rebuild | 528h |
 | _test_green | 654h |
 | _test_red | 724h |
 | verify_claims | 0h |
