@@ -33,6 +33,14 @@ _MAX_RETRY_AFTER_S = 300.0
 # returned 1.5 MB in 3.5 s. Before 2026-08-18 a timeout raised straight out of
 # here with no retry at all, so every blip cost a whole run.
 _TRANSIENT_RETRY_WAIT_S = 10.0
+# 503 is handled separately above because it carries Retry-After. These do not,
+# but they are the same kind of event: the server is briefly unwell, not
+# refusing us. wzdx_az returned HTTP 500 twice within seconds on 2026-08-18 and
+# wzdx_mn has produced five HTTP 502s in a week — each cost a whole run, while
+# the next scheduled attempt minutes later succeeded. 500 can also be a
+# permanent server bug, which is why this is ONE retry on the shared budget and
+# not a policy of grinding.
+_TRANSIENT_SERVER_ERRORS = (500, 502, 504)
 
 
 @dataclass(frozen=True)
@@ -145,6 +153,10 @@ def polite_get(
                     f"(> {_MAX_RETRY_AFTER_S:.0f}s cap) — failing run; retry later"
                 )
             time.sleep(wait)
+            continue
+        if resp.status_code in _TRANSIENT_SERVER_ERRORS and not retried:
+            retried = True
+            time.sleep(_TRANSIENT_RETRY_WAIT_S)
             continue
         break
 

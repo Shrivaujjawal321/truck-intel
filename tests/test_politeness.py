@@ -179,3 +179,28 @@ def test_a_timed_out_host_still_counts_as_contacted(monkeypatch, sleeps):
     ])
     polite_get(URL, min_interval_s=5.0)
     assert "api.example.gov" in politeness._last_hit
+
+
+def test_transient_5xx_retries_once_then_succeeds(monkeypatch, sleeps):
+    """500/502/504 carry no Retry-After but mean the same thing as a 503: the
+    server is briefly unwell, not refusing. wzdx_az burned a run on an HTTP 500
+    that was gone seconds later."""
+    for code in (500, 502, 504):
+        politeness._last_hit.clear()
+        calls = _serve(monkeypatch, [FakeResponse(code), FakeResponse(200, b"ok")])
+        assert polite_get(URL).status_code == 200, f"{code} should be retried"
+        assert len(calls) == 2
+
+
+def test_second_5xx_is_handed_to_the_caller_not_looped(monkeypatch, sleeps):
+    calls = _serve(monkeypatch, [FakeResponse(500), FakeResponse(500)])
+    assert polite_get(URL).status_code == 500
+    assert len(calls) == 2, "two attempts is the cap"
+
+
+def test_404_is_not_retried(monkeypatch, sleeps):
+    """A missing resource is an answer, not a wobble — retrying it is just
+    noise against someone else's server."""
+    calls = _serve(monkeypatch, [FakeResponse(404)])
+    assert polite_get(URL).status_code == 404
+    assert len(calls) == 1
