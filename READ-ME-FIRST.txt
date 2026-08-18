@@ -28,9 +28,15 @@ ABOUT .venv/
 
 RUNNING IT
     rm -rf .venv && uv sync
-    cp .env.example .env        # then edit CONTACT_EMAIL
-    make db-up                  # PostGIS 16 + 3.4 in Docker
-    make schema schema-phase2 schema-routes schema-wave2 schema-tracking
+    cp .env.example .env && chmod 600 .env
+        # then edit .env: set CONTACT_EMAIL, and replace REPLACE_ME in
+        # DATABASE_URL with a real password --  openssl rand -hex 24
+        # There is deliberately no default: this repo is public, and a default
+        # password in a public repo is a published password. It was, until
+        # 2026-08-18.
+    make db-up                  # PostGIS 16 + 3.4 in Docker, bound to 127.0.0.1
+    make schema-all             # every sql/ file, in sql/apply-order.txt order
+    make rotate-track-password  # optional; only if you use the tracking endpoint
     make sync                   # registry/*.yaml -> ops.sources
     make tick                   # fetch whatever is due (repeat, or run the timer)
     make viewer                 # http://127.0.0.1:8000/viewer

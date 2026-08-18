@@ -4,6 +4,8 @@ venv/
 
 # secrets
 .env
+# rotation backups — old credentials, same blast radius as .env itself
+.env.bak-*
 
 # immutable raw downloads (content-addressed, replayable, never committed)
 data/raw/
@@ -42,3 +44,11 @@ data/outputs/
 # (a 3-4 h pass is worth hours; see _cleanup_workdir), so they must never be
 # committed — 25 of them reached 26 GB before 2026-07-28.
 data/pbf/.osmways-work-*/
+
+# Local-only: the 2026-08-18 critic reports. These name the weaknesses that are
+# still OPEN (no API auth, viewer XSS, unhardened units) — in a public repo that
+# is a checklist for someone else. Keep them on the machine.
+data/reviews/
+# runtime counter for scripts/status_push.py — changes every 2h, means nothing
+# to anyone else
+data/status_push_state.json

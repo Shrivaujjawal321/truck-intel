@@ -8,7 +8,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-_DEFAULT_DATABASE_URL = "postgresql://truckintel:truckintel_dev@localhost:5432/truckintel"
+# Deliberately NOT a working password. A default that authenticates is a
+# published password once the repo is public — which this one is. The shape is
+# kept so a missing DATABASE_URL fails as a normal auth error on the usual code
+# path (same as "database is down") rather than as an AttributeError somewhere
+# far from the cause. Set DATABASE_URL in .env; see .env.example.
+_DEFAULT_DATABASE_URL = (
+    "postgresql://truckintel:UNSET-set-DATABASE_URL-in-dotenv@localhost:5432/truckintel"
+)
 _dotenv_loaded = False
 
 

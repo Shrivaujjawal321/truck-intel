@@ -68,12 +68,25 @@ CREATE INDEX IF NOT EXISTS truck_devices_last_seen_ix
     ON core.truck_devices (last_seen_at DESC) WHERE active;
 
 -- ---------------------------------------------------------------- write role
--- Password is a local-dev value, consistent with DATABASE_URL in .env.example.
--- Rotate it (and TRACK_DATABASE_URL) before this reaches a shared host.
+-- No password literal here. This file is committed to a public repo, so a
+-- literal is a published credential the moment it is also the live one — which
+-- is exactly what happened before 2026-08-18.
+--
+-- Supply one explicitly:
+--     PGOPTIONS="-c truckintel.track_password=$(openssl rand -hex 24)" make schema-tracking
+-- or let it default to an unguessable random value: the role and its grants are
+-- created correctly, but nobody can log in until an operator sets a password
+-- (`make rotate-track-password`). Failing closed beats a working default.
 DO $$
+DECLARE
+    pw text := nullif(current_setting('truckintel.track_password', true), '');
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'truckintel_track') THEN
-        CREATE ROLE truckintel_track LOGIN PASSWORD 'truckintel_track_dev';
+        IF pw IS NULL THEN
+            -- gen_random_uuid() is core since PG13; no pgcrypto dependency.
+            pw := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+        END IF;
+        EXECUTE format('CREATE ROLE truckintel_track LOGIN PASSWORD %L', pw);
     END IF;
 END
 $$;
