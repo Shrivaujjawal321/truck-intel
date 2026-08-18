@@ -57,7 +57,12 @@ fi
 # Scoped to code, not docs: data/reviews/ documents this incident by name and
 # those credentials are already dead.
 known_bad='truckintel_dev|truckintel_track_dev|REPLACE_ME_ACTUAL|changeme'
-hits="$(git grep -nIE "$known_bad" -- '*.py' '*.sh' '*.sql' '*.yml' '*.yaml' 'Makefile' '*.txt' 2>/dev/null)"
+# ...excluding this file, which has to name the strings it hunts for. It was
+# untracked when first written, so git grep could not see it; the moment it was
+# committed the guard began failing on its own pattern definition. Caught
+# locally on 2026-08-18; it would have failed the next CI run.
+hits="$(git grep -nIE "$known_bad" -- '*.py' '*.sh' '*.sql' '*.yml' '*.yaml' \
+        'Makefile' '*.txt' ':!scripts/preflight_secrets.sh' 2>/dev/null)"
 if [ -n "$hits" ]; then
     bad "a known dev-default credential is back in tracked code:"
     printf '%s\n' "$hits" | sed 's/^/          /' >&2

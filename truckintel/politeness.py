@@ -27,6 +27,12 @@ _DEFAULT_RETRY_AFTER_S = 30.0
 # Retry-After beyond this cap fails the run (PoliteRefusal) and the scheduler's
 # backoff retries later — politeness preserved, pipeline never frozen.
 _MAX_RETRY_AFTER_S = 300.0
+# A hang or a DNS blip is not a refusal, and the feed that produced it is
+# usually fine seconds later. mn.carsprogram.org failed 21 of 48 runs in 48 h
+# on "Read timed out (60s)" while a hand-timed request to the same endpoint
+# returned 1.5 MB in 3.5 s. Before 2026-08-18 a timeout raised straight out of
+# here with no retry at all, so every blip cost a whole run.
+_TRANSIENT_RETRY_WAIT_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -106,7 +112,22 @@ def polite_get(
     retried = False
     while True:
         _throttle(host, min_interval_s)
-        resp = requests.get(url, params=params, headers=send_headers, timeout=timeout_s)
+        try:
+            resp = requests.get(url, params=params, headers=send_headers,
+                                timeout=timeout_s)
+        except (requests.Timeout, requests.ConnectionError):
+            # One retry, never a loop — the same discipline the 429/503 path
+            # uses, and it shares `retried`, so a host cannot cost more than
+            # two attempts however it misbehaves. The throttle above still
+            # applies on the way round, so this can never become hammering.
+            # _last_hit is updated because the host WAS contacted: a request
+            # that timed out still consumed its attention.
+            _last_hit[host] = time.monotonic()
+            if retried:
+                raise
+            retried = True
+            time.sleep(_TRANSIENT_RETRY_WAIT_S)
+            continue
         _last_hit[host] = time.monotonic()
 
         if resp.status_code == 403:
