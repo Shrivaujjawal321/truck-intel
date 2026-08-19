@@ -268,7 +268,8 @@ mechanics-fill:
 # the same lesson learned twice more on 2026-08-18.)
 FAST_TESTS := tests/test_mechanic_enrich.py tests/test_registry.py \
               tests/test_validate.py tests/test_parsers.py \
-              tests/test_politeness.py tests/test_mechanic_state_floor.py
+              tests/test_politeness.py tests/test_mechanic_state_floor.py \
+              tests/test_worker_network_gate.py
 
 test-fast:
 	uv run pytest -q $(FAST_TESTS)

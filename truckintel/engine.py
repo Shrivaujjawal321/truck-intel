@@ -9,6 +9,7 @@ import json
 import os
 import re
 import signal
+import socket
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -843,6 +844,34 @@ def _run_derived_job(job: dict) -> None:
             enqueue_rescore(conn)
 
 
+_NET_PROBE_HOST = "one.one.one.one"
+_NET_PROBE_TTL_S = 30.0
+_net_probe: tuple[float, bool] | None = None
+
+
+def _network_up() -> bool:
+    """Can this machine resolve anything at all?
+
+    The same probe scripts/wait_ready.sh uses, for the same reason: getaddrinfo
+    goes through NSS, which is the path requests actually takes, so it tests
+    what the job will do rather than something adjacent.
+
+    Cached for a few seconds — the queue can hand out many jobs a minute and
+    the answer does not change that fast.
+    """
+    global _net_probe
+    now = time.monotonic()
+    if _net_probe is not None and now - _net_probe[0] < _NET_PROBE_TTL_S:
+        return _net_probe[1]
+    try:
+        socket.getaddrinfo(_NET_PROBE_HOST, 443)
+        up = True
+    except OSError:
+        up = False
+    _net_probe = (now, up)
+    return up
+
+
 def worker_loop() -> None:
     """Drain ops.job_queue forever: claim_job -> run_source -> finish_job.
     One job at a time in MVP; sleeps briefly when the queue is empty.
@@ -863,6 +892,25 @@ def worker_loop() -> None:
             if derived_job is not None:
                 _run_derived_job(derived_job)
                 continue
+            time.sleep(_WORKER_IDLE_SLEEP_S)
+            continue
+        # An offline machine is "not now", not "this feed is broken". Overnight
+        # on 2026-08-18 the laptop lost DNS and the worker kept claiming jobs
+        # and attempting fetches against nothing: 97 failed runs across eight
+        # sources, every one of them "Max retries exceeded", none of them about
+        # the sources. That noise buries a real failure and, left long enough,
+        # would trip the circuit breaker on eight healthy feeds.
+        #
+        # ExecStartPre=wait_ready.sh gates the worker at START; it cannot help
+        # when the network dies hours later. defer_job is the existing answer
+        # and its own docstring argues this exact case: a deferral keeps the
+        # job queued, spends no backoff, counts toward no breaker, and alerts
+        # nobody.
+        if not _network_up():
+            with get_conn() as conn:
+                jobs.defer_job(conn, job["job_id"],
+                               "no DNS on this machine — deferring rather than "
+                               "recording a failure the source did not cause")
             time.sleep(_WORKER_IDLE_SLEEP_S)
             continue
         try:
