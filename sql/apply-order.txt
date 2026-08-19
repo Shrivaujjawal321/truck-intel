@@ -21,4 +21,8 @@ schema_phase2.sql
 schema_routes.sql
 schema_wave2.sql
 schema_tracking.sql
+# Before schema_liveness.sql, which references core.mechanic_shops. That
+# dependency is why the nightly CI run failed on 2026-08-19 the first time a
+# clean container applied schema_liveness at all.
+schema_mechanics.sql
 schema_liveness.sql
