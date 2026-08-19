@@ -1,0 +1,1001 @@
+osm_id,state,state_source
+node/10000264944,CT,osm
+node/10001015545,CA,overture
+node/10001015599,CA,overture
+node/10001510549,KS,overture
+node/10001538995,KS,overture
+node/1000156036,MN,nearest truck route
+node/10001760441,GA,nearest truck route
+node/10003086239,RI,overture
+node/10003168594,IA,overture
+node/10003168595,IA,overture
+node/10003168596,IA,overture
+node/10003168597,IA,overture
+node/10003578314,CA,overture
+node/10003836506,IL,overture
+node/10003836507,IL,overture
+node/1000449648,WI,overture
+node/10005144385,AL,overture
+node/10005144386,AL,overture
+node/10005174671,IL,overture
+node/10005174672,IL,overture
+node/10005298227,IL,overture
+node/10005494016,FL,overture
+node/10005619137,IL,nearest truck route
+node/10005619142,IL,overture
+node/10005620327,IL,overture
+node/10005625627,NY,overture
+node/10005679274,TX,overture
+node/10005679278,TX,overture
+node/10005679290,TX,overture
+node/10006175347,NC,nearest truck route
+node/10006918238,TX,overture
+node/10006918242,TX,overture
+node/10007478461,NV,overture
+node/10007498606,AL,overture
+node/10007498607,AL,overture
+node/1000755863,CA,overture
+node/10008793472,NC,osm
+node/10009481935,CA,overture
+node/10009481939,ND,overture
+node/10009481941,CA,overture
+node/10009877980,AZ,overture
+node/10010176025,GA,osm
+node/10010181374,GA,osm
+node/10010181375,GA,overture
+node/10010181376,GA,overture
+node/10010181377,GA,overture
+node/10010181380,GA,overture
+node/10010181381,GA,osm
+node/10010420864,FL,overture
+node/10011745441,CA,overture
+node/10012311570,UT,osm
+node/10012512742,NY,nearest truck route
+node/10012512755,NY,overture
+node/10012512796,NY,overture
+node/10012556541,CA,overture
+node/10012556979,CA,overture
+node/10012568646,CA,overture
+node/10012568655,CA,overture
+node/10014293306,MS,nearest truck route
+node/10015124788,CA,overture
+node/10017127004,FL,nearest truck route
+node/10018097085,NC,osm
+node/10018911699,CA,overture
+node/10018986298,CA,overture
+node/10019054891,CA,overture
+node/10020195453,MS,overture
+node/10023069846,CO,osm
+node/1002395302,IN,osm
+node/10024527117,NY,nearest truck route
+node/10025809348,AZ,overture
+node/10026553549,GA,nearest truck route
+node/10026553812,GA,overture
+node/10026553948,GA,overture
+node/10026554268,GA,overture
+node/10026554340,GA,overture
+node/10027517386,GA,overture
+node/10027517387,GA,osm
+node/10027518263,GA,osm
+node/10027843433,GA,overture
+node/10027843477,GA,overture
+node/10027948130,GA,overture
+node/10027948131,GA,overture
+node/10027948194,GA,nearest truck route
+node/10027948196,GA,overture
+node/10027948198,GA,overture
+node/10027948199,GA,overture
+node/10027948208,GA,overture
+node/10027948323,GA,overture
+node/10027948324,GA,overture
+node/10027948327,GA,overture
+node/10027952094,NV,overture
+node/1002844680,WY,osm
+node/10028588054,NY,overture
+node/10028625592,CA,overture
+node/10029041736,GA,overture
+node/10030108420,GA,overture
+node/10030780268,TX,nearest truck route
+node/10030807118,TX,nearest truck route
+node/10030823791,ID,osm
+node/10030928245,GA,overture
+node/10030928254,GA,overture
+node/10030928616,GA,overture
+node/10030928640,GA,nearest truck route
+node/10030928641,GA,overture
+node/10031266775,GA,nearest truck route
+node/10031266776,GA,overture
+node/10031717459,NC,osm
+node/10032321767,NC,overture
+node/1003350786,MN,nearest truck route
+node/10033557465,NY,overture
+node/10035221135,LA,nearest truck route
+node/10035397623,LA,nearest truck route
+node/10037457678,NJ,overture
+node/10041139118,OR,nearest truck route
+node/10041209851,CA,overture
+node/10043449000,MO,overture
+node/1004428058,AL,overture
+node/10045982622,MO,osm
+node/10046196651,VA,osm
+node/10047311987,NC,osm
+node/10047336062,NC,osm
+node/10047343625,NC,osm
+node/10048015646,NJ,osm
+node/10049117498,NC,osm
+node/10049690094,VT,osm
+node/1005008075,AL,nearest truck route
+node/10050175976,CA,osm
+node/10052453718,WA,nearest truck route
+node/10052776176,CA,overture
+node/10052808573,CA,overture
+node/10053010366,WI,osm
+node/10053050243,WI,osm
+node/1005329594,NE,nearest truck route
+node/10054785165,SC,overture
+node/10054788820,AR,osm
+node/10055103387,PA,nearest truck route
+node/10055276646,WI,osm
+node/10057091287,PA,overture
+node/10057370917,KS,osm
+node/10057431754,SC,nearest truck route
+node/10057431766,SC,overture
+node/10057431772,SC,overture
+node/10057852381,IA,osm
+node/10059320316,PA,nearest truck route
+node/10059925813,GA,osm
+node/10059925814,GA,osm
+node/10059992537,CA,nearest truck route
+node/10059992554,CA,overture
+node/10060009125,CA,overture
+node/10060387803,OH,osm
+node/10061734240,GA,osm
+node/10061744027,GA,osm
+node/10061744031,GA,osm
+node/10061744032,GA,osm
+node/10061744034,GA,osm
+node/10061918896,NY,nearest truck route
+node/10062365265,GA,osm
+node/10062517901,CA,overture
+node/10062549715,GA,overture
+node/10062563717,CA,overture
+node/10062606869,GA,overture
+node/10062606870,GA,osm
+node/10062764042,CA,overture
+node/10062764046,CA,overture
+node/10062774168,CA,nearest truck route
+node/10065340028,GA,osm
+node/10065340030,GA,osm
+node/10065340043,GA,osm
+node/10065591972,GA,osm
+node/10065608186,GA,osm
+node/10065613357,GA,osm
+node/10065675840,GA,osm
+node/10065677044,CA,osm
+node/10065714892,LA,nearest truck route
+node/10066504769,NM,nearest truck route
+node/10067495447,CA,overture
+node/10067495457,CA,overture
+node/10067543627,CA,overture
+node/10067595979,SC,overture
+node/10067817936,GA,osm
+node/10067980660,TN,overture
+node/10068129402,MT,overture
+node/10068129943,MT,osm
+node/10069522894,TN,overture
+node/10069545686,PA,overture
+node/10069550367,MT,overture
+node/10073600495,SC,overture
+node/10073828160,IN,nearest truck route
+node/10073892675,NY,overture
+node/10074113095,GA,overture
+node/10074453144,AZ,osm
+node/10075203135,NY,overture
+node/10075232268,NC,overture
+node/10075493295,KY,overture
+node/10075493296,KY,overture
+node/10075493298,KY,overture
+node/10075543224,KY,overture
+node/10076102398,TX,overture
+node/10076198420,FL,nearest truck route
+node/10076198421,FL,nearest truck route
+node/10076540316,AR,osm
+node/10078566691,TX,nearest truck route
+node/10080738987,OH,osm
+node/10080863402,IA,overture
+node/10080863403,IA,overture
+node/10082244359,ME,nearest truck route
+node/10082836030,NC,overture
+node/10083245629,GA,nearest truck route
+node/10083245634,GA,nearest truck route
+node/10083245690,GA,nearest truck route
+node/10083296972,GA,overture
+node/10083302056,GA,nearest truck route
+node/10083302198,GA,overture
+node/10083450457,GA,overture
+node/10083450586,GA,overture
+node/10083451018,GA,overture
+node/10083451098,GA,overture
+node/10083451199,GA,overture
+node/10083451277,GA,overture
+node/10083451464,GA,overture
+node/10083451663,GA,nearest truck route
+node/10083451669,GA,nearest truck route
+node/10083665852,GA,overture
+node/10083666275,GA,overture
+node/10083666290,GA,overture
+node/10083666291,GA,overture
+node/10083666292,GA,overture
+node/10083666300,GA,nearest truck route
+node/10083666412,GA,overture
+node/10083666413,GA,overture
+node/10083915988,CA,overture
+node/10085947417,UT,overture
+node/10086895675,IL,overture
+node/10087079524,AL,nearest truck route
+node/10087079525,AL,overture
+node/10087661374,GA,overture
+node/10087677722,GA,overture
+node/10087677723,GA,overture
+node/10087677805,GA,nearest truck route
+node/10087677890,GA,overture
+node/10087677891,GA,overture
+node/10087677933,GA,overture
+node/10087677952,GA,overture
+node/10087677972,GA,overture
+node/10087926515,NY,overture
+node/10087980629,NY,overture
+node/10088156758,CA,overture
+node/10088156760,CA,overture
+node/10088291259,CA,nearest truck route
+node/10088949783,GA,overture
+node/10088952398,GA,overture
+node/10088952508,GA,overture
+node/1008904886,MN,nearest truck route
+node/10089669113,GA,overture
+node/10089669142,GA,overture
+node/10089669238,GA,osm
+node/10089669239,GA,overture
+node/10089669240,GA,overture
+node/10089669263,GA,overture
+node/10089669264,GA,overture
+node/10089791417,OH,nearest truck route
+node/10090324933,GA,overture
+node/10090324934,GA,overture
+node/10090324937,GA,overture
+node/10090324964,GA,nearest truck route
+node/10090324996,GA,nearest truck route
+node/10090325011,GA,overture
+node/10090325013,GA,overture
+node/10090325092,GA,overture
+node/10090325201,GA,nearest truck route
+node/10090325226,GA,nearest truck route
+node/10090434916,GA,overture
+node/10090458017,GA,overture
+node/10090458022,GA,overture
+node/10090458023,GA,overture
+node/10090458027,GA,overture
+node/10090458060,GA,overture
+node/10090458112,GA,overture
+node/10090458117,GA,overture
+node/10090458207,GA,overture
+node/10090458246,GA,overture
+node/10090608906,SC,nearest truck route
+node/10091197095,CA,osm
+node/10091411762,GA,overture
+node/10091411763,GA,overture
+node/10091411764,GA,nearest truck route
+node/10091411778,GA,overture
+node/10091411780,GA,overture
+node/10091411793,GA,overture
+node/10091447339,GA,overture
+node/10091447353,GA,nearest truck route
+node/10091448432,GA,nearest truck route
+node/10091448463,GA,overture
+node/10091448465,GA,overture
+node/10091448469,GA,nearest truck route
+node/10091448672,GA,nearest truck route
+node/10091448673,GA,nearest truck route
+node/10091448682,GA,nearest truck route
+node/10091460197,GA,overture
+node/10091460207,GA,overture
+node/10091469555,GA,nearest truck route
+node/10091469556,GA,nearest truck route
+node/10091469565,GA,overture
+node/10091469572,GA,overture
+node/10091524181,GA,overture
+node/10091524182,GA,overture
+node/10091558139,GA,nearest truck route
+node/10091558150,GA,nearest truck route
+node/10091591142,MI,osm
+node/10093645430,GA,overture
+node/10093655769,AL,overture
+node/10093776754,NY,overture
+node/10093776760,NY,nearest truck route
+node/10094539727,IA,osm
+node/1009577553,WI,overture
+node/10096219166,IN,overture
+node/10096464805,SC,overture
+node/10097297734,GA,overture
+node/10097297743,GA,overture
+node/10097490111,GA,overture
+node/10097545478,GA,overture
+node/10097545653,GA,overture
+node/10097545665,GA,overture
+node/10097546348,GA,overture
+node/10097654863,GA,overture
+node/10097655060,GA,nearest truck route
+node/10097655174,GA,overture
+node/10097655193,GA,overture
+node/10097655194,GA,overture
+node/10097979918,GA,overture
+node/10097979933,GA,overture
+node/10097979941,GA,nearest truck route
+node/10097980048,GA,nearest truck route
+node/10097980053,GA,overture
+node/10097980155,GA,overture
+node/10097980156,GA,overture
+node/10097991639,TN,overture
+node/10100541706,MO,nearest truck route
+node/10101108781,GA,overture
+node/10101109164,GA,overture
+node/10101115276,NY,nearest truck route
+node/10101197160,GA,overture
+node/10101197166,GA,overture
+node/10101361291,SC,overture
+node/10102270333,AL,overture
+node/10102351796,SC,overture
+node/10102519223,CO,overture
+node/10102684711,NC,overture
+node/10102685746,NC,overture
+node/10103719048,NC,osm
+node/10104481406,LA,nearest truck route
+node/10104563143,SC,nearest truck route
+node/10106945415,SC,overture
+node/10107103248,GA,overture
+node/10107103310,GA,overture
+node/10107103311,GA,nearest truck route
+node/10107103339,GA,nearest truck route
+node/10107103618,GA,nearest truck route
+node/10108040655,GA,nearest truck route
+node/10108040678,GA,overture
+node/10108040683,GA,overture
+node/10108063232,SC,nearest truck route
+node/10109000591,CA,osm
+node/10109011657,CA,osm
+node/10109335507,SC,nearest truck route
+node/10109335508,SC,nearest truck route
+node/10109335605,GA,overture
+node/10109335611,GA,nearest truck route
+node/10109335617,GA,nearest truck route
+node/10109748236,SC,overture
+node/10109748238,SC,overture
+node/10109748474,SC,overture
+node/10109748551,SC,overture
+node/10109748576,SC,overture
+node/10109748638,SC,overture
+node/10109748639,SC,overture
+node/10109776613,IL,overture
+node/1011125368,CA,overture
+node/10111384990,NC,overture
+node/10111643179,TX,overture
+node/10111643183,TX,overture
+node/10111688644,CO,nearest truck route
+node/10111716657,TX,nearest truck route
+node/10111861315,CA,overture
+node/10114622195,NY,osm
+node/10115000773,PA,overture
+node/10115338039,CA,overture
+node/10115621544,AL,overture
+node/10116453028,NY,osm
+node/10116453029,NY,osm
+node/10118191613,GA,nearest truck route
+node/10118191939,GA,overture
+node/10118191940,GA,overture
+node/10118191965,GA,overture
+node/10118797889,NY,overture
+node/1011881548,AK,overture
+node/10118905320,GA,overture
+node/10118905376,GA,overture
+node/10118905494,GA,overture
+node/10119228856,CA,overture
+node/10119466868,TN,overture
+node/1012125738,WV,nearest truck route
+node/1012126356,WV,overture
+node/10121282620,NH,overture
+node/10121672072,SC,overture
+node/10121672116,SC,overture
+node/10121729545,SC,nearest truck route
+node/10121729551,SC,overture
+node/10121729600,SC,overture
+node/10121729601,SC,overture
+node/10121729966,SC,overture
+node/10121729967,SC,overture
+node/10121729990,SC,overture
+node/10121730014,SC,overture
+node/10121978530,SC,nearest truck route
+node/10122630446,MI,osm
+node/10122675846,NC,osm
+node/10127304607,CA,overture
+node/10128129931,NC,osm
+node/10128929272,GA,osm
+node/10129333902,NC,overture
+node/10129383765,IL,osm
+node/10129383779,IL,osm
+node/10129383802,IL,osm
+node/10129383898,IL,osm
+node/10129383918,IL,osm
+node/10129689576,SC,overture
+node/1013072831,KS,overture
+node/10130915382,GA,osm
+node/10131323979,KY,overture
+node/10131675756,PA,osm
+node/10133254401,CA,nearest truck route
+node/10133684355,CO,osm
+node/10133870239,CA,osm
+node/10134046485,CA,osm
+node/10134120317,AL,overture
+node/10134148320,LA,nearest truck route
+node/10134465918,SC,overture
+node/10134486209,IL,osm
+node/10134500824,IL,osm
+node/10134500888,IL,osm
+node/10135930818,MO,overture
+node/10135930829,MO,overture
+node/10138322280,MO,overture
+node/10138684632,AZ,osm
+node/10138890448,CA,nearest truck route
+node/10139107137,IA,overture
+node/10140244179,KY,overture
+node/10140474746,GA,overture
+node/10141167632,KY,overture
+node/10141342755,CA,overture
+node/10141445956,OR,overture
+node/10141535712,GA,osm
+node/10141535713,GA,osm
+node/10141535714,GA,osm
+node/10141546220,GA,overture
+node/1014256257,WI,nearest truck route
+node/10143376536,PA,overture
+node/10143473465,GA,overture
+node/10143473466,GA,overture
+node/10144576707,GA,overture
+node/10144621618,GA,overture
+node/10144621719,GA,nearest truck route
+node/10144621818,GA,nearest truck route
+node/10144622043,GA,osm
+node/10144622044,GA,osm
+node/10144622186,GA,osm
+node/10144622565,GA,osm
+node/10144622601,GA,osm
+node/10144622602,GA,overture
+node/10144622714,GA,overture
+node/10144622715,GA,overture
+node/10144622717,GA,overture
+node/10144820917,SC,overture
+node/10144821017,SC,nearest truck route
+node/10144929748,OR,osm
+node/10146421851,TX,nearest truck route
+node/10146904899,GA,overture
+node/10146905036,GA,nearest truck route
+node/10146905223,GA,overture
+node/10146905230,GA,overture
+node/10146905231,GA,overture
+node/10146905335,GA,overture
+node/10146905336,GA,overture
+node/10146905337,GA,overture
+node/10146905338,GA,overture
+node/10146905760,GA,overture
+node/10146905861,GA,overture
+node/10146905862,GA,overture
+node/10147108034,GA,overture
+node/10147108035,GA,overture
+node/10147552809,TN,overture
+node/10147552810,TN,overture
+node/10148586327,AZ,osm
+node/1014926312,CO,osm
+node/1014926513,CO,nearest truck route
+node/1014926559,CO,osm
+node/1014926606,CO,overture
+node/1014926680,CO,osm
+node/10151979617,NH,overture
+node/10152350123,TX,overture
+node/10152363778,TX,overture
+node/10152375259,MS,nearest truck route
+node/1015278489,AZ,overture
+node/10152787954,NC,overture
+node/10153348375,NM,osm
+node/10153723539,TN,overture
+node/10153723540,TN,overture
+node/10153723541,TN,overture
+node/10153723542,TN,overture
+node/10157352766,NC,osm
+node/10158396573,GA,nearest truck route
+node/10158418466,CA,overture
+node/10158422463,CA,nearest truck route
+node/10158422508,CA,osm
+node/10158422703,GA,osm
+node/10158824995,CA,overture
+node/10158905477,NC,osm
+node/10158928366,NC,overture
+node/1015922173,WV,overture
+node/1015924005,WV,overture
+node/1015927169,WV,overture
+node/10160105076,CA,overture
+node/10160402607,CA,overture
+node/10160413183,CA,overture
+node/10160491355,CA,overture
+node/10160666397,GA,overture
+node/1016208240,OR,overture
+node/10162181052,NC,osm
+node/10164025268,NY,nearest truck route
+node/10167180579,TX,osm
+node/10167404318,CA,nearest truck route
+node/10167762897,CA,overture
+node/10168206339,CA,overture
+node/10169914590,IL,osm
+node/10170005510,NC,overture
+node/10170073607,CA,overture
+node/10170161386,NY,overture
+node/10170296271,NC,overture
+node/10170382746,NC,overture
+node/10170431705,AL,overture
+node/10170453353,CA,overture
+node/10170632752,NY,overture
+node/1017063575,CA,overture
+node/10173632950,NY,overture
+node/10173791526,NY,overture
+node/10174400416,AZ,osm
+node/10177560220,MN,nearest truck route
+node/10179545198,GA,overture
+node/10180090927,CA,overture
+node/10181286460,IN,overture
+node/10181540877,FL,overture
+node/10185224300,MA,osm
+node/10185292191,MA,overture
+node/10186147204,NC,osm
+node/10186236517,RI,overture
+node/10187661968,AZ,osm
+node/10188280084,FL,overture
+node/10188280085,FL,overture
+node/10188435052,FL,overture
+node/10189045623,KY,osm
+node/10189198171,KY,osm
+node/1019299074,CA,osm
+node/1019422056,AL,overture
+node/1019462443,FL,overture
+node/1019462971,FL,overture
+node/1019463158,FL,overture
+node/1019472755,FL,overture
+node/10195536298,KY,osm
+node/10195727189,MO,osm
+node/10196180961,MS,overture
+node/10197348147,FL,overture
+node/10197348152,FL,overture
+node/10197348154,FL,overture
+node/10197493561,LA,overture
+node/10197493585,LA,overture
+node/10197634905,LA,overture
+node/10197634906,LA,nearest truck route
+node/10197666007,LA,overture
+node/10197666013,LA,overture
+node/10197726549,LA,overture
+node/10198182061,MA,nearest truck route
+node/10198577362,LA,overture
+node/10198577381,LA,overture
+node/10199972774,CA,osm
+node/10199972806,CA,osm
+node/10200274315,CA,overture
+node/10201052567,IN,nearest truck route
+node/10202225165,CA,nearest truck route
+node/10202770334,MN,osm
+node/10204074717,NC,overture
+node/10204314952,CA,overture
+node/10204539918,TX,overture
+node/1020463006,AL,overture
+node/1020463015,AL,overture
+node/10204733225,CA,nearest truck route
+node/10204822613,IA,nearest truck route
+node/10204824310,CA,overture
+node/10205236765,TN,overture
+node/10205710471,NY,overture
+node/10205710498,NY,overture
+node/10206431769,NY,overture
+node/1020805869,MA,overture
+node/10208295758,VA,overture
+node/10208325987,TX,nearest truck route
+node/10208437168,WA,nearest truck route
+node/10209103796,NM,nearest truck route
+node/10210817544,MI,overture
+node/10211306735,MO,overture
+node/10212881975,CA,overture
+node/10212963333,WA,overture
+node/10213233611,NJ,overture
+node/1021384119,CO,osm
+node/10214823340,VA,nearest truck route
+node/10215342027,FL,nearest truck route
+node/10215342197,FL,overture
+node/10216084411,NV,overture
+node/10217210602,TN,nearest truck route
+node/10217210603,TN,nearest truck route
+node/10217330351,NM,nearest truck route
+node/10217330360,NM,nearest truck route
+node/10218067525,PA,nearest truck route
+node/10219844104,VT,overture
+node/10219971318,WY,overture
+node/10220688086,CO,osm
+node/1022120610,KS,overture
+node/1022121200,KS,overture
+node/10221430617,AR,overture
+node/10221430619,AR,overture
+node/10223970274,CA,overture
+node/10224461563,AZ,osm
+node/10224832765,FL,osm
+node/10224946340,FL,osm
+node/10225065032,MT,overture
+node/10225067314,MT,overture
+node/10225387114,FL,overture
+node/10226748954,WI,osm
+node/10227952822,NM,overture
+node/10227987197,NM,osm
+node/10228325504,SC,osm
+node/10229039840,NC,osm
+node/10229441079,ID,overture
+node/10229694841,WI,osm
+node/10231648996,TN,overture
+node/10231648997,TN,overture
+node/10231648998,TN,overture
+node/10231954669,GA,overture
+node/10232206491,KY,overture
+node/10232218090,KY,overture
+node/10232218091,KY,overture
+node/10232251450,PA,overture
+node/10233346980,SC,osm
+node/10234003850,WV,nearest truck route
+node/10234003852,WV,nearest truck route
+node/10234431660,NC,overture
+node/10234770701,AZ,osm
+node/10234930490,VA,osm
+node/10234948533,IL,osm
+node/10235207781,AZ,osm
+node/10236688100,NJ,overture
+node/10236688106,NJ,overture
+node/10236712013,NJ,overture
+node/1023736932,CO,overture
+node/10237494756,SC,overture
+node/10237823769,AZ,osm
+node/10238018642,NC,osm
+node/1023883703,PA,overture
+node/10239196081,CO,overture
+node/10239301326,AZ,osm
+node/10239494941,CA,nearest truck route
+node/10240472379,OK,osm
+node/10240903953,CA,overture
+node/10241200838,CA,overture
+node/10241661132,SC,overture
+node/10241664978,SC,overture
+node/10241851911,WV,overture
+node/10243538785,CA,overture
+node/10243538786,CA,overture
+node/10243659659,NH,overture
+node/10243978198,CA,overture
+node/10244328792,WA,overture
+node/10245492307,TX,overture
+node/10245599424,TX,overture
+node/10245862260,TX,overture
+node/10245862263,TX,overture
+node/10245927236,NC,overture
+node/10246212588,CA,overture
+node/10246252477,CA,overture
+node/10246266596,CA,overture
+node/10246266597,CA,overture
+node/10246869874,NJ,nearest truck route
+node/10246877083,TX,nearest truck route
+node/10247195047,OK,overture
+node/10247508567,UT,nearest truck route
+node/10247623562,CA,nearest truck route
+node/10247836978,IA,osm
+node/10247920578,NY,nearest truck route
+node/10247965689,SC,overture
+node/10247965692,SC,overture
+node/10247965694,SC,overture
+node/10249535681,MN,overture
+node/10249583931,NJ,overture
+node/10250061434,IL,nearest truck route
+node/10251632846,TX,overture
+node/10251774579,WA,overture
+node/10251807882,NH,overture
+node/10253671825,CA,osm
+node/10254145864,TX,nearest truck route
+node/1025739631,CA,overture
+node/1025739640,CA,overture
+node/1025739643,CA,overture
+node/10258265646,CA,overture
+node/1025882560,MD,osm
+node/10259071184,CA,osm
+node/10262076222,NC,overture
+node/10263014400,CA,nearest truck route
+node/10263258096,NY,overture
+node/10263321564,CA,nearest truck route
+node/10264024499,GA,nearest truck route
+node/10265872075,PA,overture
+node/10266317591,CA,overture
+node/10266317592,CA,overture
+node/10266368265,CA,nearest truck route
+node/10266689448,SC,nearest truck route
+node/10266828181,AL,nearest truck route
+node/10268078938,CA,overture
+node/10268080240,CA,overture
+node/10268582932,VT,overture
+node/10268897481,SC,nearest truck route
+node/10268897482,SC,nearest truck route
+node/10268934512,MA,overture
+node/10268934710,MA,overture
+node/10268956313,SC,overture
+node/10268971413,SC,nearest truck route
+node/10269303001,IL,nearest truck route
+node/1026951328,MD,osm
+node/10269720518,WI,osm
+node/10269869624,NY,overture
+node/10270138044,NY,overture
+node/10270138509,CT,nearest truck route
+node/10270172962,WI,osm
+node/10270375168,TN,nearest truck route
+node/10270827149,TN,overture
+node/10271430233,MD,overture
+node/10271749949,TX,overture
+node/10272254579,CA,overture
+node/10272254580,CA,overture
+node/10273464874,NC,osm
+node/10274642008,SC,overture
+node/10274726337,CA,overture
+node/10274726342,CA,overture
+node/10274960342,CA,overture
+node/10276034322,NC,osm
+node/10276282996,NY,nearest truck route
+node/10276466342,CA,overture
+node/10276480605,CA,overture
+node/10276701954,MO,nearest truck route
+node/1027676941,NJ,nearest truck route
+node/10276952751,CA,nearest truck route
+node/10276959265,OH,overture
+node/10276959286,OH,overture
+node/10276959380,OH,overture
+node/10276959699,CA,overture
+node/10277265611,CA,overture
+node/10277265653,CA,overture
+node/10278285947,MO,overture
+node/10278438469,NC,osm
+node/10278567456,VA,osm
+node/10278575017,NM,osm
+node/10278610576,CA,overture
+node/10278713748,GA,overture
+node/10279027380,MO,overture
+node/10279030886,MO,overture
+node/10279126535,MI,overture
+node/10279137886,CA,overture
+node/10279137902,CA,overture
+node/10279205218,CA,overture
+node/10279205221,CA,overture
+node/10279363739,FL,overture
+node/10279471258,CA,overture
+node/10279493617,CA,overture
+node/10279493631,CA,overture
+node/10280080625,NC,osm
+node/10280537547,NC,osm
+node/10280706211,CA,overture
+node/10280947380,CA,osm
+node/10280974053,MO,overture
+node/10281189945,MT,overture
+node/10281191541,MT,overture
+node/10281372008,NM,osm
+node/10281615530,MT,overture
+node/10281696807,MT,overture
+node/10281859690,NY,overture
+node/10281859695,NY,overture
+node/10282970277,TX,osm
+node/10283041202,LA,nearest truck route
+node/10283041203,LA,nearest truck route
+node/10283076945,MT,overture
+node/1028422453,SC,nearest truck route
+node/10285217871,CA,overture
+node/10285244210,OK,overture
+node/10285309348,CA,nearest truck route
+node/10285415092,OK,overture
+node/10285437420,NC,overture
+node/10285437422,NC,overture
+node/10285437435,GA,overture
+node/10285530306,MT,overture
+node/10285530307,MT,overture
+node/10285530308,MT,overture
+node/10285530313,MT,overture
+node/10285530319,MT,overture
+node/10286202049,CA,overture
+node/10286203797,CA,overture
+node/10286712566,MO,overture
+node/10286877228,MO,nearest truck route
+node/10287023610,NY,nearest truck route
+node/10287232353,FL,nearest truck route
+node/10287589245,NC,osm
+node/10287737764,NY,overture
+node/10287820448,NY,overture
+node/10287820449,NY,overture
+node/10287820454,NY,nearest truck route
+node/10287820460,NY,overture
+node/10287841426,NY,overture
+node/10287841427,NY,overture
+node/10287890682,NY,nearest truck route
+node/10287952583,CA,nearest truck route
+node/10288264657,NY,overture
+node/10288279164,NY,overture
+node/10288279176,NY,nearest truck route
+node/10288321850,CA,osm
+node/10288335929,CA,overture
+node/10288736857,NM,osm
+node/10288736859,NM,osm
+node/10289746381,NC,osm
+node/10290143757,MA,overture
+node/10290227292,SC,overture
+node/10290474038,SC,overture
+node/10290530272,SC,overture
+node/10290547239,SC,overture
+node/10290547242,SC,overture
+node/10291371244,NC,nearest truck route
+node/10291943608,NY,osm
+node/10292318874,WV,overture
+node/10292408457,WV,overture
+node/10293670719,SC,overture
+node/10293677521,SC,overture
+node/10293712741,SC,overture
+node/10294027361,MT,overture
+node/1029410927,WY,osm
+node/10294309823,LA,overture
+node/10294635513,RI,osm
+node/10294861010,CA,nearest truck route
+node/10295112297,NC,osm
+node/10295626578,GA,nearest truck route
+node/10296001531,CA,nearest truck route
+node/10296003217,CA,overture
+node/10296003218,CA,overture
+node/10296045935,SC,overture
+node/10296045941,SC,overture
+node/10296107804,OK,overture
+node/10296285716,MD,overture
+node/10296845588,NC,osm
+node/10297008871,NC,nearest truck route
+node/10297066805,CA,overture
+node/10297154209,FL,overture
+node/10297593898,CA,nearest truck route
+node/10297729855,CA,overture
+node/10297738308,NC,nearest truck route
+node/10297755175,CA,overture
+node/10298057690,NC,osm
+node/10298367429,OK,overture
+node/10298620448,OK,overture
+node/10298620449,OK,overture
+node/10299171961,PA,overture
+node/10299184985,PA,nearest truck route
+node/10299221619,PA,overture
+node/10299221620,PA,nearest truck route
+node/10299362210,VA,overture
+node/10299640754,TX,nearest truck route
+node/10299911503,SC,overture
+node/1029991438,TN,overture
+node/10300543677,SC,nearest truck route
+node/10300709938,NC,osm
+node/10300709939,NC,osm
+node/10300857467,OH,osm
+node/10300887123,TX,osm
+node/10300988903,OH,osm
+node/10301007845,TX,osm
+node/10301072064,TX,osm
+node/10301192681,CA,osm
+node/10301223067,CA,osm
+node/10301257864,CA,osm
+node/10301276334,NC,osm
+node/10301345173,OH,nearest truck route
+node/10303074530,NH,nearest truck route
+node/10303077810,VA,overture
+node/10303588361,CA,overture
+node/10303588551,TX,nearest truck route
+node/10303596973,CA,overture
+node/10303696480,CA,overture
+node/1030380330,TX,overture
+node/1030470905,WI,overture
+node/10305042936,TX,nearest truck route
+node/10307186481,OH,osm
+node/10307710801,NJ,overture
+node/10307710803,NJ,overture
+node/10307726222,NJ,overture
+node/10308144445,CA,overture
+node/10308896594,NY,overture
+node/10308896596,NY,overture
+node/10308924778,NY,overture
+node/10309079016,NJ,nearest truck route
+node/10309346308,TX,overture
+node/10309429367,TX,overture
+node/10309429369,TX,overture
+node/10309635837,NJ,overture
+node/10309855790,AZ,overture
+node/10309983753,TX,overture
+node/10309983757,CA,overture
+node/10309983769,CA,overture
+node/10310267622,CA,nearest truck route
+node/10310267629,CA,overture
+node/1031049068,CA,overture
+node/10311323760,NY,overture
+node/10311323764,NY,overture
+node/10311354227,NC,osm
+node/10311964896,CA,overture
+node/10312041835,FL,overture
+node/10312057841,NY,overture
+node/10312225981,TX,overture
+node/10312401481,TX,nearest truck route
+node/10312401506,TX,overture
+node/10312652886,TX,overture
+node/10312652901,TX,overture
+node/10312681398,TX,overture
+node/10313291909,TX,overture
+node/10313292011,TX,overture
+node/10313584550,TX,overture
+node/10313877324,MI,overture
+node/10313880922,NJ,nearest truck route
+node/10313923721,GA,overture
+node/10314082021,MD,overture
+node/10315071529,SC,overture
+node/10315368139,GA,overture
+node/10315368150,GA,overture
+node/10315545012,NJ,overture
+node/10316198584,FL,overture
+node/10316266059,NY,overture
+node/10316780409,OH,overture
+node/10316833709,TX,overture
+node/10316833909,TX,overture
+node/10316842109,TX,overture
+node/1032125145,GA,overture
+node/1032125176,GA,overture
+node/1032600624,MO,overture
+node/1033057327,GA,osm
+node/1033850106,MN,nearest truck route
+node/1034706004,PA,overture
+node/1034706012,PA,osm
+node/1035224941,CO,nearest truck route
+node/1035563710,WV,nearest truck route
+node/1035989289,CA,overture
+node/1036344185,CA,overture
+node/103637141,NJ,overture
+node/1036431164,NY,nearest truck route
+node/1036711435,KS,overture
+node/1036711543,KS,nearest truck route
+node/1036711624,KS,overture
+node/1038018407,WY,overture
+node/1038018475,WY,nearest truck route
+node/1038018785,WY,overture
+node/1038018936,WY,overture
+node/1038019528,WY,overture
+node/1039312231,IN,osm
+node/1039312320,IN,osm
+node/1039312412,IN,osm
+node/1039312583,IN,osm
+node/1039312715,IN,osm
+node/1039312767,IN,osm
+node/1039312780,IN,osm
+node/1039312944,IN,osm
+node/1039366354,IN,osm
+node/1039366388,IN,osm
+node/1039366459,IN,osm
+node/1039366470,IN,osm
+node/1039366502,IN,osm
+node/1039366516,IN,osm
+node/1039366532,IN,osm
+node/1039366543,IN,osm
+node/1039366551,IN,osm
+node/1039366566,IN,osm
+node/1039395010,IN,osm
+node/1039395012,IN,osm
+node/1039395013,IN,osm
+node/1039395016,IN,osm
+node/1039395018,IN,osm
+node/1039395019,IN,osm
+node/1039395034,IN,osm
+node/1039395042,IN,osm

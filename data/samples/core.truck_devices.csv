@@ -1,0 +1,3 @@
+device_id,label,token_sha256,active,created_at,last_seen_at,last_geom,last_speed_kph,ping_count,reject_count
+truck-demo,Demo rig (Jarvis test),07e41f790b8ed22b6e16ae2db34b8cf8fd1b445a4f468ca47b49a249f04e5fec,t,2026-07-26 13:16:47.11474+00,2026-07-26 13:38:24.105811+00,POINT(-96.822 32.7167),95,18,1
+truck-quiet,Gone quiet (stale test),6fb98ded21b1055f999a171ce6588dd34608a1af0c9543869ba5323b6b806a71,t,2026-07-26 13:24:29.711658+00,2026-07-26 12:37:30.897429+00,POINT(-104.99 39.74),0,0,0

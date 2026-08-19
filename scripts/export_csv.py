@@ -52,6 +52,10 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default="data/exports")
     ap.add_argument("--schema", action="append", dest="schemas")
+    ap.add_argument("--sample", type=int, metavar="N", default=None,
+                    help="write only the first N rows per table, ordered by the "
+                         "first column so re-runs produce the SAME rows — an "
+                         "unordered LIMIT would churn the diff every time")
     args = ap.parse_args(argv)
     load_dotenv()
 
@@ -65,11 +69,21 @@ def main(argv: list[str]) -> int:
         for schema, table in tables(conn, schemas):
             cols = select_list(conn, schema, table)
             path = out / f"{schema}.{table}.csv"
-            sql = f'COPY (SELECT {cols} FROM "{schema}"."{table}") TO STDOUT WITH CSV HEADER'
+            inner = f'SELECT {cols} FROM "{schema}"."{table}"'
+            if args.sample:
+                first = conn.execute(
+                    """SELECT column_name FROM information_schema.columns
+                       WHERE table_schema = %s AND table_name = %s
+                       ORDER BY ordinal_position LIMIT 1""",
+                    (schema, table)).fetchone()
+                if first:
+                    inner += f' ORDER BY "{first[0]}"'
+                inner += f" LIMIT {args.sample}"
+            sql = f'COPY ({inner}) TO STDOUT WITH CSV HEADER'
             with path.open("wb") as fh, conn.cursor().copy(sql) as cp:
                 for chunk in cp:
                     fh.write(chunk)
-            n = conn.execute(f'SELECT count(*) FROM "{schema}"."{table}"').fetchone()[0]
+            n = sum(1 for _ in path.open()) - 1  # rows written, not rows held
             size = path.stat().st_size
             total_bytes += size
             manifest.append((f"{schema}.{table}", n, size))
