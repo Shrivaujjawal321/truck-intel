@@ -7,7 +7,7 @@ PostGIS database — this file is the heartbeat.
 ## Fuel
 
 - EIA weekly diesel (public domain): 143 rows, last 12 weeks → [diesel_prices_eia.csv](diesel_prices_eia.csv)
-- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-17, 51 states
+- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-19, 51 states
 
 ## Layers
 
@@ -23,33 +23,33 @@ PostGIS database — this file is the heartbeat.
 
 | source | age |
 |---|---|
-| aaa_daily | 48h |
-| businesses_conflate | 657h |
+| aaa_daily | 1h |
+| businesses_conflate | 658h |
 | caltrans_cwwp2_cc_d02 | 0h |
 | caltrans_cwwp2_cc_d03 | 0h |
 | caltrans_cwwp2_cc_d09 | 0h |
-| chain_sites | 20h |
-| eia_diesel | 20h |
-| fsq_places | 13h |
-| liveness | 20h |
-| mechanic_list | 15h |
-| nbi_annual | 162h |
-| ntad_national_network | 116h |
-| ntad_parking | 20h |
-| nti_tunnels | 159h |
+| chain_sites | 22h |
+| eia_diesel | 22h |
+| fsq_places | 14h |
+| liveness | 22h |
+| mechanic_list | 16h |
+| nbi_annual | 163h |
+| ntad_national_network | 118h |
+| ntad_parking | 22h |
+| nti_tunnels | 160h |
 | nws_alerts | 0h |
-| osm_pois | 655h |
-| osm_truck_repair_overpass | 20h |
-| osm_ways | 42h |
-| overture_places | 657h |
-| pipeline_smoke | 5h |
-| quality_nightly | 5h |
-| quality_rescore | 537h |
-| route_rebuild | 543h |
-| _test_green | 669h |
-| _test_red | 739h |
-| verify_claims | 5h |
+| osm_pois | 656h |
+| osm_truck_repair_overpass | 22h |
+| osm_ways | 44h |
+| overture_places | 659h |
+| pipeline_smoke | 1h |
+| quality_nightly | 7h |
+| quality_rescore | 539h |
+| route_rebuild | 544h |
+| _test_green | 671h |
+| _test_red | 741h |
+| verify_claims | 6h |
 | wzdx_az | 0h |
 | wzdx_ks | 0h |
-| wzdx_mn | 10h |
+| wzdx_mn | 0h |
 | wzdx_wa | 0h |
