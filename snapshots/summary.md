@@ -24,13 +24,13 @@ PostGIS database — this file is the heartbeat.
 | source | age |
 |---|---|
 | aaa_daily | 48h |
-| businesses_conflate | 656h |
+| businesses_conflate | 657h |
 | caltrans_cwwp2_cc_d02 | 0h |
 | caltrans_cwwp2_cc_d03 | 0h |
 | caltrans_cwwp2_cc_d09 | 0h |
 | chain_sites | 20h |
 | eia_diesel | 20h |
-| fsq_places | 12h |
+| fsq_places | 13h |
 | liveness | 20h |
 | mechanic_list | 15h |
 | nbi_annual | 162h |
@@ -49,7 +49,7 @@ PostGIS database — this file is the heartbeat.
 | _test_green | 669h |
 | _test_red | 739h |
 | verify_claims | 5h |
-| wzdx_az | 9h |
+| wzdx_az | 0h |
 | wzdx_ks | 0h |
 | wzdx_mn | 10h |
 | wzdx_wa | 0h |
