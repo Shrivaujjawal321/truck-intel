@@ -1,0 +1,13 @@
+# Daily 03:20, between track-prune (03:10) and quality (03:30): retention runs
+# before the nightly work, so the quality pass and the self-checks see the tree
+# they will actually live with.
+[Unit]
+Description=truck-intel raw retention timer (daily 03:20 local)
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

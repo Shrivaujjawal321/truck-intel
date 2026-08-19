@@ -1,6 +1,6 @@
 # truck-intel — common tasks. Run from the repo root.
 
-.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking schema-liveness chain-sites liveness liveness-report route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers preflight-secrets rotate-track-password schema-all check-schema-order test-fast status-push status-push-dry status-push-arm status-push-stop
+.PHONY: db-up schema schema-phase2 schema-routes schema-wave2 schema-viewer schema-tracking schema-liveness chain-sites liveness liveness-report route-graph route-node route-components route-snap-index route-limits fuel-verify fuel-enrich fuel-routes aaa-prices pois-refresh mechanics verify-claims sync ingest tick api status test status-page freshness weekly-digest osm-ways osm-ways-resume viewer viewer-stop track-add track-list track-prune osm-truck-repair mechanics-refresh mechanics-fill ci ci-fast pipeline-smoke install-timers preflight-secrets rotate-track-password schema-all check-schema-order test-fast raw-prune raw-prune-dry status-push status-push-dry status-push-arm status-push-stop
 
 db-up:
 	./scripts/db_up.sh
@@ -182,6 +182,12 @@ track-list:
 	uv run python scripts/track_device.py list
 
 # Retention is a window, not an archive (the daily timer runs this).
+raw-prune:
+	uv run python scripts/raw_prune.py --days $(or $(DAYS),14)
+
+raw-prune-dry:
+	uv run python scripts/raw_prune.py --dry-run
+
 track-prune:
 	uv run python scripts/track_device.py prune --days 30
 
@@ -269,7 +275,7 @@ mechanics-fill:
 FAST_TESTS := tests/test_mechanic_enrich.py tests/test_registry.py \
               tests/test_validate.py tests/test_parsers.py \
               tests/test_politeness.py tests/test_mechanic_state_floor.py \
-              tests/test_worker_network_gate.py
+              tests/test_worker_network_gate.py tests/test_raw_prune.py
 
 test-fast:
 	uv run pytest -q $(FAST_TESTS)
@@ -304,7 +310,7 @@ NET_UNITS := aaa-prices freshness osm-truck-repair mechanics-daily mechanics \
 
 # Every timer-driven job goes in the deprioritised slice. tick is excluded
 # (seconds, every minute) and so are api/worker, which are interactive.
-BATCH_UNITS := aaa-prices freshness quality nightly-checks track-prune \
+BATCH_UNITS := aaa-prices freshness quality nightly-checks track-prune raw-prune \
                osm-truck-repair mechanics-daily mechanics pois businesses \
                weekly-digest fuel-verify ops-watch git-push liveness
 

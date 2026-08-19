@@ -1,0 +1,15 @@
+# Retention sweep for data/raw — the sibling truckintel-track-prune has always
+# had and the raw ingest zone never did.
+#
+# Nothing pruned the raw zone: 6.0 GB across 8,560 files after four weeks,
+# growing ~220 MB/day from live-event polling. The disk was never in danger on
+# this machine, but tests/test_validate.py globs that tree as a real-data
+# canary and had stopped finishing in eight minutes.
+[Unit]
+Description=truck-intel raw ingest retention sweep (prune old payloads)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/truck-intel
+ExecStart=%h/.local/bin/uv run python scripts/raw_prune.py --days 14

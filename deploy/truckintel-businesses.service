@@ -5,9 +5,17 @@
 #   1. --pull-overture   (NO leading '-'): the permissive primary source. If it
 #      fails the service ABORTS before conflate, so a bad pull never rebuilds
 #      core.businesses from empty/partial staging — the last good table stays live.
-#   2. --pull-fsq --fsq-mirror  (leading '-'): enrichment via the keyless
-#      source.coop mirror (no HF_TOKEN wait-item). Best-effort: a failure is
-#      ignored and conflate proceeds Overture-only.
+#   2. fsq_fetch.sh then --pull-fsq --fsq-local-dir (both leading '-'):
+#      enrichment via the keyless source.coop mirror (no HF_TOKEN wait-item),
+#      read from a LOCAL copy. Best-effort: a failure is ignored and conflate
+#      proceeds Overture-only.
+#      Local, not --fsq-mirror, since 2026-08-19: DuckDB's httpfs reader
+#      against data.source.coop stalls — measured twice, a run reaches ~28-30 MB
+#      then sits at 0-6 KB/s with sockets in CLOSE-WAIT and makes no progress
+#      for the better part of an hour, while plain curl pulls from the same
+#      host at 3.6 MB/s. fsq_places had NEVER succeeded until it was read
+#      locally. fsq_fetch.sh re-verifies the mirror first (resumable, and a
+#      no-op when nothing changed, since the release is frozen).
 #   3. --conflate  (NO leading '-'): full rebuild + atomic snapshot swap, only
 #      reached when the Overture pull succeeded.
 # US-wide pulls are heavy (tens of GB of remote parquet scanned) — this is the
@@ -22,7 +30,8 @@ WorkingDirectory=%h/Documents/truck-intel
 # per-pull runtime is long; systemd default has no timeout for oneshot, but be explicit
 TimeoutStartSec=6h
 ExecStart=%h/.local/bin/uv run python scripts/businesses_pipeline.py --pull-overture
-ExecStart=-%h/.local/bin/uv run python scripts/businesses_pipeline.py --pull-fsq --fsq-mirror
+ExecStart=-%h/Documents/truck-intel/scripts/fsq_fetch.sh
+ExecStart=-%h/.local/bin/uv run python scripts/businesses_pipeline.py --pull-fsq --fsq-local-dir data/fsq_places
 ExecStart=%h/.local/bin/uv run python scripts/businesses_pipeline.py --conflate
 
 # Kernel ceilings, added 2026-07-27. `Nice`/`IOSchedulingClass` only lower

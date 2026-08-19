@@ -70,6 +70,7 @@ EXPECTED_UNITS = {
     "truckintel-liveness": timedelta(days=2),
     # Every 2h while armed; 3h of slack for the RandomizedDelay-free gap timer.
     "truckintel-status-push": timedelta(hours=3),
+    "truckintel-raw-prune": timedelta(days=2),
 }
 
 # The data Boss named: "daily fuel prize update ho, truck routes, mechanic
