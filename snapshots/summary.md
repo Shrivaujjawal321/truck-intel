@@ -7,7 +7,7 @@ PostGIS database — this file is the heartbeat.
 ## Fuel
 
 - EIA weekly diesel (public domain): 143 rows, last 12 weeks → [diesel_prices_eia.csv](diesel_prices_eia.csv)
-- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-20, 51 states
+- AAA daily state diesel (personal-use licence — prices NOT republished): last pull 2026-08-21, 51 states
 
 ## Layers
 
@@ -23,33 +23,33 @@ PostGIS database — this file is the heartbeat.
 
 | source | age |
 |---|---|
-| aaa_daily | 22h |
-| businesses_conflate | 706h |
-| caltrans_cwwp2_cc_d02 | 17h |
-| caltrans_cwwp2_cc_d03 | 17h |
-| caltrans_cwwp2_cc_d09 | 17h |
-| chain_sites | 22h |
-| eia_diesel | 22h |
-| fsq_places | 62h |
-| liveness | 70h |
-| mechanic_list | 22h |
-| nbi_annual | 43h |
-| ntad_national_network | 166h |
-| ntad_parking | 22h |
-| nti_tunnels | 40h |
-| nws_alerts | 17h |
-| osm_pois | 705h |
-| osm_truck_repair_overpass | 22h |
-| osm_ways | 92h |
-| overture_places | 707h |
-| pipeline_smoke | 22h |
-| quality_nightly | 22h |
-| quality_rescore | 587h |
-| route_rebuild | 592h |
-| _test_green | 719h |
-| _test_red | 789h |
-| verify_claims | 22h |
-| wzdx_az | 17h |
-| wzdx_ks | 18h |
-| wzdx_mn | 18h |
-| wzdx_wa | 18h |
+| aaa_daily | 1h |
+| businesses_conflate | 708h |
+| caltrans_cwwp2_cc_d02 | 0h |
+| caltrans_cwwp2_cc_d03 | 0h |
+| caltrans_cwwp2_cc_d09 | 0h |
+| chain_sites | 1h |
+| eia_diesel | 0h |
+| fsq_places | 64h |
+| liveness | 72h |
+| mechanic_list | 1h |
+| nbi_annual | 45h |
+| ntad_national_network | 1h |
+| ntad_parking | 0h |
+| nti_tunnels | 42h |
+| nws_alerts | 0h |
+| osm_pois | 706h |
+| osm_truck_repair_overpass | 1h |
+| osm_ways | 94h |
+| overture_places | 709h |
+| pipeline_smoke | 1h |
+| quality_nightly | 1h |
+| quality_rescore | 589h |
+| route_rebuild | 594h |
+| _test_green | 721h |
+| _test_red | 791h |
+| verify_claims | 1h |
+| wzdx_az | 0h |
+| wzdx_ks | 0h |
+| wzdx_mn | 0h |
+| wzdx_wa | 0h |
